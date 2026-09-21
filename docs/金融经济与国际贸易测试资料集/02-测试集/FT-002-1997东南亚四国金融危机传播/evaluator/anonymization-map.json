@@ -1,0 +1,16 @@
+{
+  "case_id": "FT-002",
+  "variant": "anonymous",
+  "time_shift_years": 3,
+  "country_map": {
+    "C1": {"iso3": "THA", "name_zh": "泰国"},
+    "C2": {"iso3": "IDN", "name_zh": "印度尼西亚"},
+    "C3": {"iso3": "MYS", "name_zh": "马来西亚"},
+    "C4": {"iso3": "PHL", "name_zh": "菲律宾"}
+  },
+  "date_map": {
+    "1997": "2000",
+    "1998": "2001"
+  },
+  "note": "匿名版仅替换国家、机构和年份，保留经济数值、相对时序与来源 ID。此文件不得提供给被测 Agent。"
+}

@@ -1,0 +1,19 @@
+{
+  "case_id": "FT-004",
+  "target_year": 1995,
+  "outcome_version": "current-revised-2026-08-30",
+  "binary": {
+    "recession_starts_in_target_year": {"value": false, "source_id": "O01"},
+    "real_gdp_growth_below_1_pct": {"value": false, "source_id": "O02"},
+    "cpi_december_yoy_at_least_4_pct": {"value": false, "source_id": "O04"},
+    "annual_unemployment_at_least_6_5_pct": {"value": false, "source_id": "O03"},
+    "real_gdp_growth_slows_at_least_1pp": {"value": true, "source_id": "O02", "detail": "1994 4.0%; 1995 2.7%"},
+    "policy_rate_cut_by_year_end": {"value": true, "source_id": "O05", "detail": "First cut on 1995-07-06; another on 1995-12-19"}
+  },
+  "numeric": {
+    "real_gdp_growth": {"value": 2.7, "unit": "percent", "source_id": "O02"},
+    "cpi_december_yoy": {"value": 2.5, "unit": "percent", "source_id": "O04"},
+    "annual_unemployment": {"value": 5.6, "unit": "percent", "source_id": "O03"}
+  },
+  "interpretation_boundary": "Bond-market losses, Mexico's crisis and slower U.S. growth occurred; the scored negative event is a U.S. recession beginning in 1995."
+}

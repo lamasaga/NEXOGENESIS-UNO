@@ -1,0 +1,8 @@
+- id: compile-tools
+  name: 'nexogenesis-tools/compile-agent'
+  config:
+    projectRoot: '__NEXO_PROJECT_ROOT__'
+    instanceRegistry: '__NEXO_PROJECT_ROOT__/.nexogenesis/instances.json'
+# Compile/construct retain the durable event log and use deterministic request
+# projection with an explicit input budget. Do not install model compaction or
+# generic head/tail pruning here; ordinary conversation presets are unchanged.

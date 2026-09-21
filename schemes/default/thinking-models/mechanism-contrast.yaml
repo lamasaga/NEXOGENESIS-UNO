@@ -1,0 +1,19 @@
+{
+  "id": "mechanism-contrast",
+  "version": "1.4.0",
+  "purpose": "比较多个解释机制的因果环节、适用范围与失效条件，避免用概念并列代替解释。",
+  "applicable_modes": ["assess", "report", "general"],
+  "applicable_states": ["用户追问为什么", "同一现象存在多种理论解释", "需要区分表面相关与机制关系"],
+  "required_capabilities": ["retrieve-candidates", "read-evidence-slice", "compare-semantic-dimensions", "inspect-evidence-set", "verify-evidence-anchors"],
+  "observation_obligations": [
+    {"role": "精读多个机制", "accepted_capabilities": ["read-evidence-slice"], "minimum_distinct_targets": 2, "require_full_read": true},
+    {"role": "按语义维度比较机制", "accepted_capabilities": ["compare-semantic-dimensions"], "minimum_distinct_targets": 2},
+    {"role": "检查支持、反证与边界", "accepted_capabilities": ["inspect-evidence-set"]},
+    {"role": "核验证据锚点", "accepted_capabilities": ["verify-evidence-anchors"]}
+  ],
+  "evidence_roles": ["support", "counter", "boundary"],
+  "output_obligations": ["evidence_anchors"],
+  "biases": ["用各机制的动作链、必要条件和可区分观察组织判断，不只并列术语", "指出哪项可观察证据能区分竞争解释，未取得就保留未知", "把时间、对象与制度边界纳入比较", "不同机制可以并存，不能仅因学派不同标为反证", "理论卡支持该理论的解释，不自动证明现实普遍规律"],
+  "stop_conditions": ["至少一个机制链有足够证据且边界明确", "多种机制可并存并已说明各自解释范围", "没有足够材料区分机制且已声明缺口"],
+  "write_boundary": "只读审视；新机制命题需转 emerge 并确认"
+}

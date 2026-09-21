@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FT-004 checkpoint response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id", "checkpoint", "as_of", "previous_checkpoint", "event_probabilities",
+    "numeric_forecasts", "scenarios", "mechanism_assessment",
+    "evidence_anchors", "update_delta", "limitations", "next_signals"
+  ],
+  "properties": {
+    "case_id": {"const": "FT-004"},
+    "checkpoint": {"enum": ["T0", "T1", "T2", "T3"]},
+    "as_of": {"type": "string", "format": "date-time"},
+    "previous_checkpoint": {"enum": [null, "T0", "T1", "T2"]},
+    "event_probabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recession_starts_in_target_year", "real_gdp_growth_below_1_pct",
+        "cpi_december_yoy_at_least_4_pct", "annual_unemployment_at_least_6_5_pct",
+        "real_gdp_growth_slows_at_least_1pp", "policy_rate_cut_by_year_end"
+      ],
+      "properties": {
+        "recession_starts_in_target_year": {"$ref": "#/$defs/probability"},
+        "real_gdp_growth_below_1_pct": {"$ref": "#/$defs/probability"},
+        "cpi_december_yoy_at_least_4_pct": {"$ref": "#/$defs/probability"},
+        "annual_unemployment_at_least_6_5_pct": {"$ref": "#/$defs/probability"},
+        "real_gdp_growth_slows_at_least_1pp": {"$ref": "#/$defs/probability"},
+        "policy_rate_cut_by_year_end": {"$ref": "#/$defs/probability"}
+      }
+    },
+    "numeric_forecasts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["real_gdp_growth", "cpi_december_yoy", "annual_unemployment"],
+      "properties": {
+        "real_gdp_growth": {"$ref": "#/$defs/forecast"},
+        "cpi_december_yoy": {"$ref": "#/$defs/forecast"},
+        "annual_unemployment": {"$ref": "#/$defs/forecast"}
+      }
+    },
+    "scenarios": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {"$ref": "#/$defs/scenario"}
+    },
+    "mechanism_assessment": {
+      "type": "array", "minItems": 3, "maxItems": 8,
+      "items": {"$ref": "#/$defs/mechanism"}
+    },
+    "evidence_anchors": {
+      "type": "array", "minItems": 3, "maxItems": 12,
+      "items": {"$ref": "#/$defs/evidence"}
+    },
+    "update_delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["changed", "unchanged", "why"],
+      "properties": {
+        "changed": {"type": "array", "items": {"type": "string"}},
+        "unchanged": {"type": "array", "items": {"type": "string"}},
+        "why": {"type": "string"}
+      }
+    },
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "next_signals": {"type": "array", "minItems": 2, "maxItems": 10, "items": {"type": "string"}}
+  },
+  "$defs": {
+    "probability": {"type": "number", "minimum": 0, "maximum": 1},
+    "interval": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "prefixItems": [{"type": "number"}, {"type": "number"}], "items": false
+    },
+    "forecast": {
+      "type": "object", "additionalProperties": false,
+      "required": ["point", "interval_50", "interval_90"],
+      "properties": {
+        "point": {"type": "number"},
+        "interval_50": {"$ref": "#/$defs/interval"},
+        "interval_90": {"$ref": "#/$defs/interval"}
+      }
+    },
+    "scenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "probability", "conditions", "disconfirming_signals"],
+      "properties": {
+        "name": {"enum": ["soft_landing", "hard_landing", "reacceleration_or_inflation"]},
+        "probability": {"$ref": "#/$defs/probability"},
+        "conditions": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "disconfirming_signals": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+      }
+    },
+    "mechanism": {
+      "type": "object", "additionalProperties": false,
+      "required": ["channel", "status", "lag", "claim", "counter_evidence"],
+      "properties": {
+        "channel": {"enum": ["housing", "durables", "inventory", "credit", "trade", "confidence", "inflation", "policy_response"]},
+        "status": {"enum": ["observed", "partly_observed", "hypothesized", "not_supported"]},
+        "lag": {"type": "string"},
+        "claim": {"type": "string"},
+        "counter_evidence": {"type": "string"}
+      }
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["supports", "kind", "anchor", "use"],
+      "properties": {
+        "supports": {"type": "string"},
+        "kind": {"enum": ["support", "counter", "boundary"]},
+        "anchor": {"pattern": "^(S[0-9]{2}|FT004-[A-Z][0-9]{2})(#[A-Za-z0-9._-]+)?$"},
+        "use": {"type": "string"}
+      }
+    }
+  }
+}

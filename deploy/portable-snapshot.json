@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "program_roots": [
+    ".agent",
+    "deploy",
+    "desktop",
+    "docs",
+    "hooks",
+    "mcp",
+    "nexogenesis",
+    "packages",
+    "patch",
+    "presets",
+    "schemes",
+    "tests",
+    "tools",
+    "web"
+  ],
+  "root_files": [
+    ".editorconfig",
+    ".gitattributes",
+    ".gitignore",
+    "AGENTS.md",
+    "README.md",
+    "prepare-nexogenesis.ps1",
+    "start-nexogenesis.cmd",
+    "start-nexogenesis.ps1"
+  ],
+  "knowledge_roots": [
+    "00-Inbox",
+    "01-Cards",
+    "02-Profile",
+    "03-Archive",
+    "04-OutBox",
+    "05-Buffer"
+  ],
+  "core_knowledge_roots": [
+    "01-Cards",
+    "02-Profile",
+    "04-OutBox",
+    "05-Buffer"
+  ],
+  "raw_material_roots": [
+    "00-Inbox",
+    "03-Archive"
+  ],
+  "excluded_directory_names": [
+    ".git",
+    ".nexogenesis",
+    "node_modules",
+    "dist",
+    "tmp",
+    "06-Journal",
+    "07-Conversations",
+    "__pycache__",
+    ".pytest_cache",
+    ".venv"
+  ],
+  "excluded_file_names": [
+    ".env",
+    ".DS_Store",
+    "Thumbs.db"
+  ],
+  "excluded_file_suffixes": [
+    ".log",
+    ".pyc"
+  ]
+}

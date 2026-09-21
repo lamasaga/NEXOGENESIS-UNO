@@ -1,0 +1,10 @@
+{
+  "id": "domain-overload-diagnosis",
+  "version": "1.0.0",
+  "purpose": "判断一个领域是否因成员异质、桥接不足或边界混杂而需要拆分、重命名或保持不变。",
+  "applicable_states": ["领域成员过多", "领域内部出现多个低连接簇", "用户要求梳理领域结构"],
+  "required_capabilities": ["inspect-domain-members", "compare-neighborhood", "simulate-domain-split"],
+  "biases": ["先看成员摘要和跨组关系，再按需精读少量代表卡", "优先模拟，不把诊断直接当成写入"],
+  "stop_conditions": ["证据不足以区分真实子领域与材料采样偏差", "已有可解释的拆分模拟或保持理由", "达到本次读取预算"],
+  "write_boundary": "一次提案只迁移一组成员或只修订一个领域关系层面"
+}

@@ -1,0 +1,43 @@
+{
+  "fixture_version": "0.2.0",
+  "case_id": "FT-004",
+  "root_layout": {
+    "cards": "fixture/01-Cards",
+    "archive": "fixture/03-Archive"
+  },
+  "domain_id": "FT004-D01",
+  "releases": {
+    "T0": {
+      "card_ids": ["FT004-D01", "FT004-C01", "FT004-C02", "FT004-C03"],
+      "archive_files": ["S01-政策启动.md", "S02-首次会议判断.md"]
+    },
+    "T1": {
+      "card_ids": ["FT004-D01", "FT004-C01", "FT004-C02", "FT004-C03", "FT004-X01", "FT004-C04", "FT004-C05"],
+      "archive_files": ["S01-政策启动.md", "S02-首次会议判断.md", "S03-夏季紧缩.md"]
+    },
+    "T2": {
+      "card_ids": ["FT004-D01", "FT004-C01", "FT004-C02", "FT004-C03", "FT004-X01", "FT004-C04", "FT004-C05", "FT004-C06", "FT004-C07", "FT004-X02"],
+      "archive_files": ["S01-政策启动.md", "S02-首次会议判断.md", "S03-夏季紧缩.md", "S04-年末政策判断.md", "S05-最后加息与外部冲击.md"]
+    },
+    "T3": {
+      "card_ids": ["FT004-D01", "FT004-C01", "FT004-C02", "FT004-C03", "FT004-X01", "FT004-C04", "FT004-C05", "FT004-C06", "FT004-C07", "FT004-X02", "FT004-C08", "FT004-C09"],
+      "archive_files": ["S01-政策启动.md", "S02-首次会议判断.md", "S03-夏季紧缩.md", "S04-年末政策判断.md", "S05-最后加息与外部冲击.md", "S06-春季传导证据.md"]
+    }
+  },
+  "decoy_ids": ["FT004-X01", "FT004-X02"],
+  "materialization_rules": {
+    "temporary_root_per_run": true,
+    "copy_only_listed_files": true,
+    "network": "disabled",
+    "writes": "disabled",
+    "anonymous_transform": "evaluator/anonymization-map.json",
+    "production_knowledge_access": "disabled"
+  },
+  "episode_checks": {
+    "do_not_require_exact_order": true,
+    "require_real_operator_receipts": true,
+    "detect_repeat_reads": true,
+    "detect_future_release_access": true,
+    "detect_observation_driven_change": true
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "id": "relation-integrity-audit",
+  "version": "1.2.0",
+  "purpose": "从按风险排序的结构问题队列出发，以关系裁决、反证审查和结构影响三种姿态处理一个局部案件，并在精读端点后进行最小治理。",
+  "applicable_states": ["Harness 报告关系错误", "知识图谱存在结构债", "需要系统检查关系完整性"],
+  "required_capabilities": ["inspect-knowledge-structure", "inspect-relation-case", "read-evidence-slice", "inspect-argument", "trace-argument-paths", "simulate-relation-patch", "propose-relation-change"],
+  "observation_obligations": [
+    {"role": "从风险队列定位一个局部问题", "accepted_capabilities": ["inspect-knowledge-structure"]},
+    {"role": "组装关系案件并精读两个端点", "accepted_capabilities": ["inspect-relation-case", "read-evidence-slice"], "minimum_distinct_targets": 2, "require_full_read": true},
+    {"role": "形成结构化裁决并模拟影响", "accepted_capabilities": ["simulate-relation-patch"]}
+  ],
+  "evidence_roles": ["support", "counter", "boundary"],
+  "biases": ["P0 确定性错误先于语义债和结构探索", "E1/E2 只负责召回或比较，不作为写入证据", "区分论证平面、情境平面和领域归属", "主动寻找不应连边的理由", "defer 是合法裁决", "一次只处理一种问题和一个局部簇", "优先用关系补丁，不转抄整卡", "写后用同一问题指纹复核闭合"],
+  "stop_conditions": ["一个局部问题已修复、排除、延期或保持独立并通过闭合检查", "高风险调整已经完成第二次反对性复核", "达到本轮写入上限"],
+  "write_boundary": "一次只修改 relation 层，最多三个紧密相关原子操作"
+}

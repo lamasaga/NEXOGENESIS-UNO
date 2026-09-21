@@ -1,0 +1,32 @@
+{
+  "case_id": "FT-004",
+  "policy": "Any semantically equivalent subset is acceptable; exact tool order is not required.",
+  "by_checkpoint": {
+    "T0": {
+      "key": ["S01", "S02", "FT004-C01", "FT004-C02", "FT004-C03"],
+      "counter": ["FT004-C01"]
+    },
+    "T1": {
+      "key": ["S03", "S04", "FT004-C04", "FT004-C05"],
+      "counter": ["FT004-X01"]
+    },
+    "T2": {
+      "key": ["S05", "S06", "S07", "FT004-C06", "FT004-C07"],
+      "counter": ["FT004-X02"]
+    },
+    "T3": {
+      "key": ["S08", "S09", "FT004-C08", "FT004-C09"],
+      "counter": ["FT004-X01", "FT004-X02"]
+    }
+  },
+  "capability_expectations": {
+    "C_graphops": ["retrieve", "read-evidence-slice", "compare-or-traverse"],
+    "D_full": ["retrieve", "read-evidence-slice", "compare-or-traverse", "thinking-model-selected", "observation-changed-next-action"]
+  },
+  "hard_fail": [
+    "uses evidence released after checkpoint",
+    "claims an anchor that was not visible",
+    "equates bond losses or Mexico crisis with a confirmed U.S. recession",
+    "claims to have used an operator absent from the Episode"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "evaluator_only": true,
+  "date_mapping": {
+    "2008-09-12": "2000-09-12",
+    "2008-11-17": "2000-11-17",
+    "2009-01-28": "2001-01-28",
+    "2009": "2001"
+  },
+  "entity_mapping": {
+    "United States": "先进经济体A",
+    "Euro area": "先进经济体区域B",
+    "Japan": "先进经济体C",
+    "IMF": "多边展望机构X",
+    "World Bank": "国际发展机构Y",
+    "Federal Reserve": "先进经济体A的货币当局",
+    "BIS": "国际银行观察机构B",
+    "Philadelphia Fed SPF": "先进经济体A的专业预测调查",
+    "Lehman Brothers": "具有全球影响的大型证券交易商"
+  },
+  "known_limit": "数值结构和冲击顺序仍可能让模型识别原案例；匿名版只用于同模型相对比较。"
+}
+

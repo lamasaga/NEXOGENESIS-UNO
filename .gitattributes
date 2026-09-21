@@ -1,0 +1,11 @@
+# 冻结评测资产可在开发仓版本化，但不进入面向新用户的干净归档。
+/docs/金融经济与国际贸易测试资料集 export-ignore
+/docs/金融经济与国际贸易测试资料集/** export-ignore
+/docs/金融经济与国际贸易测试资料集/** text eol=lf
+/docs/真实回归案例 export-ignore
+/docs/真实回归案例/** export-ignore
+/docs/2026-08-30-计量经济学五卡正式验证样本.md export-ignore
+/docs/2026-08-30-历史关系遗留治理报告.md export-ignore
+
+# 开发现场记录不属于初始化项目。
+/design-qa.md export-ignore

@@ -1,0 +1,25 @@
+{
+  "id": "deep-inquiry",
+  "version": "1.1.0",
+  "purpose": "在显式深入思考测试中依次完成信息搜集、机制分析、受控认知偏移、跨域类比、反例搜索与证据验收，检验模型是否真实执行 TM 与 OPS，而不是只生成结构化长文。",
+  "applicable_modes": ["general"],
+  "applicable_states": ["用户明确要求固定执行压力测试", "用户要求测试 TM 与 OPS 执行", "用户使用 /deep-think 测试命令"],
+  "required_capabilities": ["retrieve-candidates", "read-evidence-slice", "trace-argument-paths", "inspect-argument", "compare-semantic-dimensions", "insight-probe", "analogize-cross-domain", "inspect-conflict-neighborhood", "inspect-evidence-set", "verify-evidence-anchors"],
+  "observation_obligations": [
+    {"role": "使用不同角度搜集候选", "accepted_capabilities": ["retrieve-candidates"], "minimum_observations": 2},
+    {"role": "精读多张不同卡片", "accepted_capabilities": ["read-evidence-slice"], "minimum_observations": 3, "minimum_distinct_targets": 6, "require_full_read": true},
+    {"role": "沿真实关系观察论证路径", "accepted_capabilities": ["trace-argument-paths"]},
+    {"role": "检查焦点论证及其边界", "accepted_capabilities": ["inspect-argument"]},
+    {"role": "按语义维度比较多个对象", "accepted_capabilities": ["compare-semantic-dimensions"], "minimum_distinct_targets": 2},
+    {"role": "执行一次受控认知偏移并检查真实返回", "accepted_capabilities": ["insight-probe"]},
+    {"role": "执行一次跨领域结构类比", "accepted_capabilities": ["analogize-cross-domain"]},
+    {"role": "主动检查冲突或反方", "accepted_capabilities": ["inspect-conflict-neighborhood"]},
+    {"role": "检查支持、反证与边界结构", "accepted_capabilities": ["inspect-evidence-set"], "required_evidence_roles": ["support", "counter", "boundary"]},
+    {"role": "核验最终证据锚点", "accepted_capabilities": ["verify-evidence-anchors"]}
+  ],
+  "evidence_roles": ["support", "counter", "boundary", "background", "inference"],
+  "output_obligations": ["evidence_anchors"],
+  "biases": ["候选召回不等于证据", "机制比较后必须尝试一次有边界的认知偏移", "受控偏移是待核验假设而不是灵感事实", "先解释机制再使用类比", "任何类比都必须给出断裂点", "优先寻找能推翻或缩小结论的材料", "工具空结果应形成明确缺口而不是伪造发现"],
+  "stop_conditions": ["全部阶段形成有效观察且证据角色闭合", "关键通道为空但替代检索已完成并明确影响", "预算耗尽或必要工具不可用且已保留可复查缺口"],
+  "write_boundary": "严格只读；分析留在对话，不产生知识写入或提案"
+}

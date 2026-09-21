@@ -1,0 +1,69 @@
+{
+  "case_id": "FT-002",
+  "target_year": 1998,
+  "country_outcomes": {
+    "C1": {
+      "iso3": "THA",
+      "real_gdp_growth": -7.63,
+      "contraction": true,
+      "official_exchange_rate_1996": 25.34,
+      "official_exchange_rate_1998": 41.36,
+      "average_exchange_rate_depreciation_pct": 63.22,
+      "average_exchange_rate_depreciation_ge_30": true,
+      "current_account_balance_pct_gdp": 12.53,
+      "current_account_surplus": true,
+      "real_import_growth": -19.56,
+      "real_export_growth": 10.79,
+      "severity_rank": 2
+    },
+    "C2": {
+      "iso3": "IDN",
+      "real_gdp_growth": -13.13,
+      "contraction": true,
+      "official_exchange_rate_1996": 2342.30,
+      "official_exchange_rate_1998": 10013.62,
+      "average_exchange_rate_depreciation_pct": 327.51,
+      "average_exchange_rate_depreciation_ge_30": true,
+      "current_account_balance_pct_gdp": 4.29,
+      "current_account_surplus": true,
+      "real_import_growth": -5.29,
+      "real_export_growth": 11.18,
+      "severity_rank": 1
+    },
+    "C3": {
+      "iso3": "MYS",
+      "real_gdp_growth": -7.36,
+      "contraction": true,
+      "official_exchange_rate_1996": 2.52,
+      "official_exchange_rate_1998": 3.92,
+      "average_exchange_rate_depreciation_pct": 55.56,
+      "average_exchange_rate_depreciation_ge_30": true,
+      "current_account_balance_pct_gdp": 13.20,
+      "current_account_surplus": true,
+      "real_import_growth": -18.75,
+      "real_export_growth": 0.49,
+      "severity_rank": 3
+    },
+    "C4": {
+      "iso3": "PHL",
+      "real_gdp_growth": -0.51,
+      "contraction": true,
+      "official_exchange_rate_1996": 26.22,
+      "official_exchange_rate_1998": 40.89,
+      "average_exchange_rate_depreciation_pct": 55.95,
+      "average_exchange_rate_depreciation_ge_30": true,
+      "current_account_balance_pct_gdp": 2.08,
+      "current_account_surplus": true,
+      "real_import_growth": -13.18,
+      "real_export_growth": -19.91,
+      "severity_rank": 4
+    }
+  },
+  "regional_outcomes": {
+    "at_least_three_contract": true,
+    "median_gdp_growth_le_minus_5": true
+  },
+  "ranking_note": "C2 的结果明显最差，C4 明显最轻；C1 与 C3 的 GDP 跌幅接近，二者互换只应轻微扣分。",
+  "calculation_note": "汇率贬值按年度平均本币/美元官方汇率相对 1996 年的增幅计算；因展示值已四舍五入，百分比为近似值。",
+  "source_ids": ["O01", "O02", "O03", "O04", "O05"]
+}

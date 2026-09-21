@@ -1,0 +1,16 @@
+{"question_id":"T0-Q1","checkpoint":"T0","type":"binary_probability","target":"world_merchandise_trade_volume_growth_2009_lt_0","prompt":"截至当前信息，2009年世界货物贸易量出现负增长的概率是多少？"}
+{"question_id":"T0-Q2","checkpoint":"T0","type":"binary_probability","target":"world_merchandise_trade_volume_growth_2009_le_minus_5","prompt":"截至当前信息，2009年世界货物贸易量下降至少5%的概率是多少？"}
+{"question_id":"T0-Q3","checkpoint":"T0","type":"numeric_forecast","target":"world_merchandise_trade_volume_growth_2009","prompt":"给出2009年世界货物贸易量增长率的点预测、50%区间和90%区间。"}
+{"question_id":"T0-Q4","checkpoint":"T0","type":"mechanism_ranking","target":"trade_downturn_mechanisms","prompt":"列出最多四个可能驱动未来贸易下滑的机制，给出相对权重、证据、反证和可观察信号。"}
+{"question_id":"T0-Q5","checkpoint":"T0","type":"scenario","target":"twelve_month_scenarios","prompt":"给出未来12个月三个互斥情景及概率，概率总和应接近1。"}
+{"question_id":"T1-Q1","checkpoint":"T1","type":"binary_probability","target":"world_merchandise_trade_volume_growth_2009_lt_0","prompt":"加入T1信息后，更新2009年世界货物贸易量负增长概率，并说明相对T0为何变化。"}
+{"question_id":"T1-Q2","checkpoint":"T1","type":"binary_probability","target":"world_merchandise_trade_volume_growth_2009_le_minus_5","prompt":"加入T1信息后，更新下降至少5%的概率，并说明相对T0为何变化。"}
+{"question_id":"T1-Q3","checkpoint":"T1","type":"numeric_forecast","target":"world_merchandise_trade_volume_growth_2009","prompt":"更新点预测、50%区间和90%区间。"}
+{"question_id":"T1-Q4","checkpoint":"T1","type":"mechanism_ranking","target":"trade_downturn_mechanisms","prompt":"更新机制排序；区分需求、融资、供应链、库存和政策因素。"}
+{"question_id":"T1-Q5","checkpoint":"T1","type":"scenario","target":"twelve_month_scenarios","prompt":"更新三个互斥情景及概率，并指出哪些新证据造成变化。"}
+{"question_id":"T2-Q1","checkpoint":"T2","type":"binary_probability","target":"world_merchandise_trade_volume_growth_2009_lt_0","prompt":"加入T2信息后，更新2009年世界货物贸易量负增长概率。"}
+{"question_id":"T2-Q2","checkpoint":"T2","type":"binary_probability","target":"world_merchandise_trade_volume_growth_2009_le_minus_5","prompt":"加入T2信息后，更新下降至少5%的概率；不要把机构的-2.1%或-2.8%当成确定结果。"}
+{"question_id":"T2-Q3","checkpoint":"T2","type":"numeric_forecast","target":"world_merchandise_trade_volume_growth_2009","prompt":"更新点预测、50%区间和90%区间，并明确与机构预测的口径差异。"}
+{"question_id":"T2-Q4","checkpoint":"T2","type":"mechanism_ranking","target":"trade_downturn_mechanisms","prompt":"给出最终机制排序、传导链、替代解释和可能推翻判断的信号。"}
+{"question_id":"T2-Q5","checkpoint":"T2","type":"scenario","target":"twelve_month_scenarios","prompt":"给出最终三个互斥情景及概率，并总结T0到T2的判断变化。"}
+

@@ -1,0 +1,61 @@
+{
+  "case_id": "FT-001",
+  "title": "2008年金融危机与全球贸易骤降",
+  "dataset_version": "0.2.0",
+  "status": "human-runnable-with-graph-fixture",
+  "period": {
+    "start": "2008-09-12T00:00:00Z",
+    "end": "2009-01-28T23:59:59Z",
+    "outcome_year": 2009
+  },
+  "primary_target": {
+    "id": "world_merchandise_trade_volume_growth_2009",
+    "unit": "percent",
+    "reference_provider": "WTO",
+    "scope": "world merchandise trade volume"
+  },
+  "checkpoints": [
+    {
+      "id": "T0",
+      "as_of": "2008-09-12T23:59:59Z",
+      "named_visible_files": ["input/T0-具名.md"],
+      "anonymous_visible_files": ["input/T0-匿名.md"],
+      "fixture_release": "T0"
+    },
+    {
+      "id": "T1",
+      "as_of": "2008-11-17T23:59:59Z",
+      "named_visible_files": ["input/T0-具名.md", "input/T1-具名.md"],
+      "anonymous_visible_files": ["input/T0-匿名.md", "input/T1-匿名.md"],
+      "fixture_release": "T1"
+    },
+    {
+      "id": "T2",
+      "as_of": "2009-01-28T23:59:59Z",
+      "named_visible_files": ["input/T0-具名.md", "input/T1-具名.md", "input/T2-具名.md"],
+      "anonymous_visible_files": ["input/T0-匿名.md", "input/T1-匿名.md", "input/T2-匿名.md"],
+      "fixture_release": "T2"
+    }
+  ],
+  "variant_question_files": {
+    "named": "questions.jsonl",
+    "anonymous": "questions-anonymous.jsonl"
+  },
+  "fixture_manifest": "fixture/manifest.json",
+  "always_visible_files": ["output-schema.json"],
+  "forbidden_to_agent": ["evaluator/", "../../01-调研资料/", "checksums.sha256"],
+  "variants": {
+    "named": "真实机构、日期和地区名称",
+    "anonymous": "机构、日期与事件名称一致替换；只能降低直接提示，不能消除历史记忆"
+  },
+  "execution_profiles": {
+    "A_naked": {"skill": null, "fixture": false, "visible_case_material": false, "allowed_thinking_models": [], "allowed_ops": [], "max_steps": 1, "read_only": true},
+    "B_fixed_packet": {"skill": null, "fixture": false, "visible_case_material": true, "allowed_thinking_models": [], "allowed_ops": [], "max_steps": 3, "read_only": true},
+    "C_graphops": {"skill": null, "fixture": true, "visible_case_material": false, "allowed_thinking_models": [], "allowed_ops": ["retrieve", "read_card", "trace_source", "compare_cards", "graph_walk", "graph_path", "inspect_argument"], "max_steps": 18, "max_card_reads": 10, "max_graph_hops": 2, "read_only": true},
+    "D_full": {"skill": "nexo-judge", "fixture": true, "visible_case_material": false, "allowed_thinking_models": ["mechanism-contrast", "scenario-conditions", "evidence-triangulation", "sequential-belief-update"], "allowed_ops": ["retrieve", "read_card", "read_card_unit", "trace_source", "compare_cards", "graph_walk", "graph_path", "inspect_argument", "inspect_checkpoint_state", "inspect_evidence_set", "verify_evidence_anchors"], "max_steps": 24, "max_card_reads": 12, "max_graph_hops": 2, "read_only": true}
+  },
+  "evaluation": {
+    "automatic": ["point_absolute_error", "brier_event_negative", "brier_event_drop_ge_5", "interval_50_hit", "interval_90_hit", "schema_valid", "time_boundary", "evidence_anchor_valid", "ops_trace_match"],
+    "human": ["time_boundary", "transmission_chain", "competing_explanations", "disconfirming_evidence", "update_proportionality"]
+  }
+}

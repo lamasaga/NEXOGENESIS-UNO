@@ -1,0 +1,26 @@
+# NEXOGENESIS-UNO web host adapter.
+# Upstream service IDs are retained for compatibility. Preparation installs this
+# only into this checkout's isolated runtime; no shared profile is modified.
+- id: web-runtime
+  disabled: true
+
+- id: llm-pi-ai
+  config:
+    providers:
+      # 使用 pi-ai 内建的 Kimi Coding 目录。它自带 Code Plan 所需的
+      # Anthropic 协议、User-Agent、思考块和工具消息兼容处理。
+      kimi-coding:
+        displayName: Kimi Code Plan
+        apiKeyEnv: KIMI_CODE_PLAN_API_KEY
+
+- insert:
+    - id: nexogenesis-web-host
+      name: nexogenesis-web-host
+      config:
+        dist: "__NEXO_PROJECT_ROOT__/web/dist/index.html"
+        appRoot: "__NEXO_PROJECT_ROOT__"
+        projectRoot: "__NEXO_PROJECT_ROOT__"
+        instanceRegistry: "__NEXO_PROJECT_ROOT__/.nexogenesis/instances.json"
+        printUrl: true
+        surfaceContext: true
+        trustedHosts: []

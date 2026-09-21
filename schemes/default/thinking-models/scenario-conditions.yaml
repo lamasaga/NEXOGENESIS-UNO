@@ -1,0 +1,19 @@
+{
+  "id": "scenario-conditions",
+  "version": "1.3.0",
+  "purpose": "围绕基准、上行和下行情景组织条件、传导机制与可观察信号，不把情景分析伪装成无条件预测。",
+  "applicable_modes": ["assess", "report", "general"],
+  "applicable_states": ["用户询问未来可能如何演变", "需要比较政策或市场情景", "报告需要条件性路径"],
+  "required_capabilities": ["retrieve-candidates", "read-evidence-slice", "compare-semantic-dimensions", "inspect-evidence-set", "verify-evidence-anchors"],
+  "observation_obligations": [
+    {"role": "精读情景依据", "accepted_capabilities": ["read-evidence-slice"], "minimum_distinct_targets": 2, "require_full_read": true},
+    {"role": "比较共同条件与分叉变量", "accepted_capabilities": ["compare-semantic-dimensions"], "minimum_distinct_targets": 2},
+    {"role": "检查支持、反证与边界", "accepted_capabilities": ["inspect-evidence-set"]},
+    {"role": "核验证据锚点", "accepted_capabilities": ["verify-evidence-anchors"]}
+  ],
+  "evidence_roles": ["support", "counter", "boundary"],
+  "output_obligations": ["evidence_anchors"],
+  "biases": ["每个情景说明触发条件、传导方向、可观察信号与失效条件", "区分共同前提与真正改变路径的分叉变量，不强行凑上中下三个标题", "历史类比只提供机制线索而非确定预测", "条件无法区分时合并情景；缺少关键观察时明确等待什么，不编造概率"],
+  "stop_conditions": ["各情景的条件、机制、信号和失效边界已明确", "情景之间没有实质差异并已合并", "缺少决定性变量且已列为待验证项"],
+  "write_boundary": "只读审视；报告保存或知识沉淀另走相应确认路径"
+}

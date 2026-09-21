@@ -1,0 +1,10 @@
+{
+  "id": "bridge-analysis",
+  "version": "1.0.0",
+  "purpose": "寻找领域之间有证据支撑的桥接机制，避免仅凭关键词相似建立关系。",
+  "applicable_states": ["两个领域存在共享实体或模型", "用户要求梳理领域间关系", "跨领域类比产生候选"],
+  "required_capabilities": ["inspect-domain-members", "compare-neighborhood", "read-evidence-slice"],
+  "biases": ["优先寻找机制、实体或方法层桥梁", "区分领域隶属与论证关系", "关系必须能定位到卡片证据", "类比逐项核对参与者、激励、约束与反馈，并明确至少一处映射失效的条件；相似不构成支持关系", "局部候选不足时复查已有材料或沿受控路径探索，实质反对意见可以推翻初始桥接方案"],
+  "stop_conditions": ["找到可验证桥梁", "相似仅为词汇共现", "达到预算且无新增在题证据"],
+  "write_boundary": "一次只建立一个桥接关系层面"
+}

@@ -1,0 +1,10 @@
+{
+  "id": "conflict-differentiation",
+  "version": "1.0.0",
+  "purpose": "区分概念差异、条件差异、证据冲突和真实命题矛盾，并判断是否需要 conflict 卡。",
+  "applicable_states": ["发现 challenge 或 contrast 联系", "两张卡给出不兼容解释", "已有冲突卡可能被更高层概念化解"],
+  "required_capabilities": ["read-evidence-slice", "inspect-conflict-neighborhood", "compare-claims"],
+  "biases": ["同时寻找支持和反证", "先明确适用条件与时间边界", "冲突卡正文必须明确列出至少两造；关系只在两端内容支持时使用 challenge 或 contrast"],
+  "stop_conditions": ["冲突可由边界条件消解", "证据足以建立冲突提案", "证据不足并已记录待办"],
+  "write_boundary": "一次只新建或修订一张冲突卡，不同时重写所有参与卡"
+}

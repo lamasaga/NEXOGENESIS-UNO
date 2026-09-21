@@ -1,0 +1,33 @@
+{
+  "date_shift_years": 20,
+  "dates": {
+    "2013": "2033",
+    "2014": "2034",
+    "2015": "2035"
+  },
+  "entities": {
+    "World Bank": "international commodity research institution",
+    "EIA": "major consuming economy energy agency",
+    "OPEC": "Producer Group G",
+    "United States": "Economy A",
+    "China": "Economy D",
+    "Iraq": "Producer R",
+    "Brent": "benchmark L",
+    "WTI": "benchmark N"
+  },
+  "commodities": {
+    "crude_oil_average": "K1",
+    "copper": "K2",
+    "iron_ore": "K3",
+    "wheat_us_hrw": "K4"
+  },
+  "source_ids": {
+    "S01": "A01", "S02": "A02", "S03": "A03",
+    "S04": "A04", "S05": "A05", "S06": "A06",
+    "S07": "A07", "S08": "A08", "S09": "A09"
+  },
+  "forbidden_literal_terms": [
+    "2013", "2014", "2015", "World Bank", "EIA", "OPEC", "China",
+    "United States", "Iraq", "Brent", "WTI", "原油", "铜", "铁矿石", "小麦"
+  ]
+}

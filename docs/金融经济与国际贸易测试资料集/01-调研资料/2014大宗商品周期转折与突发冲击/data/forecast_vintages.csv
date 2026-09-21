@@ -1,0 +1,17 @@
+source_id,available_at,commodity,unit,target_year,forecast_value,checkpoint,notes
+S01,2013-10-15,crude_oil_average,usd_per_bbl,2015,102.0,T0,World Bank nominal forecast
+S01,2013-10-15,copper,usd_per_mt,2015,7000.0,T0,World Bank nominal forecast
+S01,2013-10-15,iron_ore,usd_per_dmt,2015,137.0,T0,World Bank nominal forecast
+S01,2013-10-15,wheat_us_hrw,usd_per_mt,2015,300.0,T0,World Bank nominal forecast
+S03,2014-07-08,brent,usd_per_bbl,2015,105.0,T1,EIA forecast; not same benchmark as World Bank crude average
+S05,2014-10-07,brent,usd_per_bbl,2015,102.0,T2,EIA forecast; not same benchmark as World Bank crude average
+S07,2014-10-15,crude_oil_average,usd_per_bbl,2015,96.0,T2,World Bank nominal forecast
+S07,2014-10-15,copper,usd_per_mt,2015,6880.0,T2,World Bank nominal forecast
+S07,2014-10-15,iron_ore,usd_per_dmt,2015,105.0,T2,World Bank nominal forecast
+S07,2014-10-15,wheat_us_hrw,usd_per_mt,2015,285.0,T2,World Bank nominal forecast
+S09,2014-12-09,brent,usd_per_bbl,2015,68.0,T3,EIA forecast after OPEC decision
+S09,2014-12-09,wti,usd_per_bbl,2015,63.0,T3,EIA forecast after OPEC decision
+O04,2016-01-26,crude_oil_average,usd_per_bbl,2015,50.8,research-only,actual annual average
+O04,2016-01-26,copper,usd_per_mt,2015,5510.0,research-only,actual annual average
+O04,2016-01-26,iron_ore,usd_per_dmt,2015,55.8,research-only,actual annual average
+O04,2016-01-26,wheat_us_hrw,usd_per_mt,2015,203.0,research-only,actual annual average

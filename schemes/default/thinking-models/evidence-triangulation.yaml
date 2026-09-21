@@ -1,0 +1,19 @@
+{
+  "id": "evidence-triangulation",
+  "version": "1.3.0",
+  "purpose": "检验一个关键判断是否得到多条可追溯证据支撑，并把来源质量、反证与未知项纳入结论。",
+  "applicable_modes": ["assess", "report", "general"],
+  "applicable_states": ["用户询问结论是否可靠", "专题报告需要核对核心判断", "多个来源给出相近或矛盾说法"],
+  "required_capabilities": ["retrieve-candidates", "read-evidence-slice", "trace-source", "inspect-evidence-set", "verify-evidence-anchors"],
+  "observation_obligations": [
+    {"role": "精读独立依据", "accepted_capabilities": ["read-evidence-slice"], "minimum_distinct_targets": 2, "require_full_read": true},
+    {"role": "核对来源", "accepted_capabilities": ["trace-source"], "minimum_distinct_targets": 2},
+    {"role": "检查支持、挑战结果与证据局限", "accepted_capabilities": ["inspect-evidence-set"], "required_evidence_roles": ["support"]},
+    {"role": "核验证据锚点", "accepted_capabilities": ["verify-evidence-anchors"]}
+  ],
+  "evidence_roles": ["support", "counter", "boundary"],
+  "output_obligations": ["evidence_anchors"],
+  "biases": ["检索命中不是证据，关键依据必须精读", "区分独立来源与同源转述，来源组数不能代替来源独立性判断", "说明最强挑战实际否定了哪一环节，而不只是材料不同", "未找到反例时记录定向检查和局限，不将未知改标 counter", "可靠性判断依赖证据的范围与方法，不由工具完成状态推导"],
+  "stop_conditions": ["核心判断已有可追溯证据与边界", "证据相互依赖且已降低置信度", "关键来源不可得并已明确未知项"],
+  "write_boundary": "只读审视；完成分析后用户要求沉淀才转 emerge 并确认。报告当前仅在对话交付，不存在报告保存提案工具"
+}

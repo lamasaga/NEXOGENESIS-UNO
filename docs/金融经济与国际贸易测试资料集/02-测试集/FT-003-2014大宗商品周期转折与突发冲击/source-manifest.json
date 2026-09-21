@@ -1,0 +1,106 @@
+{
+  "dataset_version": "0.1.0",
+  "retrieved_at": "2026-08-30",
+  "storage_note": "测试输入为带时间边界的人工摘录；原始网页和PDF未镜像。",
+  "sources": [
+    {
+      "id": "S01",
+      "title": "World Bank Commodity Markets Outlook, October 2013",
+      "url": "https://documents1.worldbank.org/curated/en/918611468332346121/pdf/Commodity-markets-outlook-October-2013.pdf",
+      "published_at": "2013-10-15",
+      "available_at": "2013-10-15T23:59:59Z",
+      "observation_period": "mainly 2011-2013; forecasts through 2025",
+      "revision_vintage": "2013-10-15",
+      "first_checkpoint": "T0",
+      "excerpt_type": "manual_summary_and_forecast_table"
+    },
+    {
+      "id": "S02",
+      "title": "World Bank Pink Sheet, July 2014",
+      "url": "https://thedocs.worldbank.org/en/doc/267641516897724101-0050022018/original/CMOPinkSheetJuly2014.pdf",
+      "published_at": "2014-07-03",
+      "available_at": "2014-07-03T23:59:59Z",
+      "observation_period": "prices through June 2014",
+      "revision_vintage": "2014-07-03",
+      "first_checkpoint": "T1",
+      "excerpt_type": "manual_price_table"
+    },
+    {
+      "id": "S03",
+      "title": "EIA Short-Term Energy Outlook, July 2014",
+      "url": "https://www.eia.gov/outlooks/steo/archives/jul14.pdf",
+      "published_at": "2014-07-08",
+      "available_at": "2014-07-08T23:59:59Z",
+      "observation_period": "oil market through early July 2014",
+      "revision_vintage": "2014-07-08",
+      "first_checkpoint": "T1",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S04",
+      "title": "World Bank Commodity Markets Outlook, July 2014",
+      "url": "https://www.worldbank.org/content/dam/Worldbank/GEP/GEPcommodities/commodity_markets_outlook_2014_july.pdf",
+      "published_at": "2014-07-15",
+      "available_at": "2014-07-15T23:59:59Z",
+      "observation_period": "2014Q2 commodity conditions and 2014/15 crop forecast",
+      "revision_vintage": "2014-07-15",
+      "first_checkpoint": "T1",
+      "excerpt_type": "manual_summary_and_table"
+    },
+    {
+      "id": "S05",
+      "title": "EIA Short-Term Energy Outlook, October 2014",
+      "url": "https://www.eia.gov/outlooks/steo/archives/oct14.pdf",
+      "published_at": "2014-10-07",
+      "available_at": "2014-10-07T23:59:59Z",
+      "observation_period": "oil market through September 2014",
+      "revision_vintage": "2014-10-07",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S06",
+      "title": "USDA WASDE, October 2014",
+      "url": "https://esmis.nal.usda.gov/usda-esmis/files/3t945q76s/vh53ww03h/3n203z440/wasde-10-10-2014.pdf",
+      "published_at": "2014-10-10",
+      "available_at": "2014-10-10T23:59:59Z",
+      "observation_period": "2014/15 world wheat balance forecast",
+      "revision_vintage": "2014-10-10",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S07",
+      "title": "World Bank Commodity Markets Outlook, October 2014",
+      "url": "https://www.worldbank.org/content/dam/Worldbank/GEP/GEPcommodities/commodity_markets_outlook_2014_october.pdf",
+      "published_at": "2014-10-15",
+      "available_at": "2014-10-15T23:59:59Z",
+      "observation_period": "commodity conditions through 2014Q3 and 2015 forecasts",
+      "revision_vintage": "2014-10-15",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary_and_forecast_table"
+    },
+    {
+      "id": "S08",
+      "title": "OPEC 166th Meeting concludes",
+      "url": "https://www.opec.org/pr-detail/84-27-nov-2014.html",
+      "published_at": "2014-11-27",
+      "available_at": "2014-11-27T23:59:59Z",
+      "observation_period": "OPEC policy decision on 2014-11-27",
+      "revision_vintage": "2014-11-27",
+      "first_checkpoint": "T3",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S09",
+      "title": "EIA Short-Term Energy Outlook, December 2014",
+      "url": "https://www.eia.gov/outlooks/steo/archives/dec14.pdf",
+      "published_at": "2014-12-09",
+      "available_at": "2014-12-09T23:59:59Z",
+      "observation_period": "oil market through early December 2014",
+      "revision_vintage": "2014-12-09",
+      "first_checkpoint": "T3",
+      "excerpt_type": "manual_summary_and_forecast_table"
+    }
+  ]
+}

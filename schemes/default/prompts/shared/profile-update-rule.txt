@@ -1,0 +1,8 @@
+【领域 Profile 更新规则】
+只在出现**领域级**（而非单次对话或个人偏好）的以下内容时，才更新 `02-Profile/`：
+
+- `target: profile_field` → `02-Profile/领域理念.md`：核心立场、价值取向排序、反模式、诚实边界
+- `target: profile_field` → `02-Profile/领域思维范式.md`：心智模型、决策启发式、推理模式、默认分析路径、内在张力
+- `target: profile_question` → `02-Profile/问题清单.md`：跨源重复出现的证据缺口、待解问题
+
+每次追加必须标注来源（Card id 或 Buffer 路径）。不要为琐碎观察更新 Profile。

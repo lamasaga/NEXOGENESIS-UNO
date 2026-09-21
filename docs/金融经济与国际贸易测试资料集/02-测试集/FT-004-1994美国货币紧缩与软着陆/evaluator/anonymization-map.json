@@ -1,0 +1,15 @@
+{
+  "case_id": "FT-004",
+  "replacements": [
+    ["United States", "Economy A"],
+    ["美国", "经济体A"],
+    ["Federal Reserve", "Monetary Authority A"],
+    ["美联储", "货币当局A"],
+    ["Mexico", "Economy M"],
+    ["墨西哥", "邻国M"],
+    ["IMF", "Institution I"],
+    ["1994", "第一年"],
+    ["1995", "第二年"]
+  ],
+  "warning": "Mechanical replacement reduces but cannot eliminate identification from the exact rate path. Anonymous fixture materialization must transform card titles, bodies and source summaries, not only prompts."
+}

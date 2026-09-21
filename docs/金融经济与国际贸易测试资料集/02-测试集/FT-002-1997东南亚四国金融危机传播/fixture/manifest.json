@@ -1,0 +1,18 @@
+{
+  "fixture_version":"0.2.0",
+  "case_id":"FT-002",
+  "cards_dir":"fixture/01-Cards",
+  "domain_id":"FT002-D01",
+  "archive_copies":[
+    {"from":"input/T0-具名.md","to":"03-Archive/T0-资料.md","release":"T0"},
+    {"from":"input/T1-具名.md","to":"03-Archive/T1-资料.md","release":"T1"},
+    {"from":"input/T2-具名.md","to":"03-Archive/T2-资料.md","release":"T2"}
+  ],
+  "releases":{
+    "T0":{"card_ids":["FT002-D01","FT002-C01","FT002-C02","FT002-C03"],"archive_targets":["T0-资料.md"]},
+    "T1":{"card_ids":["FT002-D01","FT002-C01","FT002-C02","FT002-C03","FT002-C04","FT002-X01"],"archive_targets":["T0-资料.md","T1-资料.md"]},
+    "T2":{"card_ids":["FT002-D01","FT002-C01","FT002-C02","FT002-C03","FT002-C04","FT002-X01","FT002-C05","FT002-C06"],"archive_targets":["T0-资料.md","T1-资料.md","T2-资料.md"]}
+  },
+  "decoy_ids":["FT002-X01"],
+  "materialization_rules":{"temporary_root_per_run":true,"copy_only_listed_files":true,"network":"disabled","writes":"disabled","production_knowledge_access":"disabled","anonymous_transform":"evaluator/anonymization-map.json"}
+}

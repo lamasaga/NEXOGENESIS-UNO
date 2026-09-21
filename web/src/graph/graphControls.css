@@ -1,0 +1,17 @@
+.graph-control-stack { position: absolute; z-index: 4; top: 14px; left: 14px; display: grid; justify-items: start; gap: 7px; color: #b7c1ca; font: 12px/1.5 system-ui, sans-serif; }
+.graph-controls { width: 34px; border: 1px solid #ffffff0b; border-radius: 8px; background: #34373b99; color: inherit; }
+.graph-controls.is-open { width: min(218px, calc(100vw - 28px)); background: #34373be8; }
+.graph-controls__toolbar, .graph-controls__actions { display: flex; align-items: center; justify-content: space-between; }
+.graph-controls button, .graph-focus-toggle { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: none; border-radius: 7px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.graph-controls button:hover:not(:disabled), .graph-focus-toggle:hover { background: #ffffff0a; color: #e0e5e9; }
+.graph-controls button:disabled { opacity: .35; cursor: default; }
+.graph-controls__body { padding: 0 12px 9px; }
+.graph-controls__control + .graph-controls__control { margin-top: 7px; }
+.graph-controls__heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.graph-controls output { color: #9daab5; font-size: 11px; font-variant-numeric: tabular-nums; }
+.graph-controls input { display: block; width: 100%; height: 24px; margin: 0; accent-color: var(--blue-primary); cursor: pointer; }
+.graph-controls :focus-visible, .graph-focus-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: 4px; }
+.graph-controls__status { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.graph-focus-toggle { border: 1px solid #ffffff0b; background: #34373b99; }
+.graph-focus-toggle[aria-pressed="true"] { border-color: #8dcddd42; background: #334047d9; color: #d8edf3; }
+@media (max-width: 600px) { .graph-control-stack { top: 10px; left: 10px; } }

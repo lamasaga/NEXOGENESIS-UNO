@@ -1,0 +1,36 @@
+{
+  "version": "1.0.0",
+  "description": "不修改案例源文件的思维体优化对照 profile。先与 C_graphops 配对，再决定候选 TM 是否晋升。",
+  "profiles": {
+    "D_skill_only": {
+      "base": "C_graphops",
+      "skill": "nexo-judge",
+      "allowed_thinking_models": [],
+      "additional_ops": ["read_card_unit", "inspect_checkpoint_state", "inspect_evidence_set", "verify_evidence_anchors"]
+    },
+    "D_tm_only": {
+      "base": "C_graphops",
+      "skill": null,
+      "thinking_models_by_case": {
+        "FT-001": ["mechanism-contrast", "scenario-conditions", "evidence-triangulation", "sequential-belief-update"],
+        "FT-002": ["mechanism-contrast", "evidence-triangulation", "sequential-belief-update", "cross-sectional-vulnerability"],
+        "FT-003": ["mechanism-contrast", "scenario-conditions", "sequential-belief-update", "multi-timescale-shock-decomposition"],
+        "FT-004": ["mechanism-contrast", "evidence-triangulation", "sequential-belief-update"]
+      },
+      "additional_ops": ["read_card_unit", "inspect_checkpoint_state", "inspect_evidence_set", "verify_evidence_anchors"]
+    },
+    "E_thinking_body_v1": {
+      "base": "C_graphops",
+      "skill": "nexo-judge",
+      "thinking_models_by_case": {
+        "FT-001": ["mechanism-contrast", "scenario-conditions", "evidence-triangulation", "sequential-belief-update"],
+        "FT-002": ["mechanism-contrast", "evidence-triangulation", "sequential-belief-update", "cross-sectional-vulnerability"],
+        "FT-003": ["mechanism-contrast", "scenario-conditions", "sequential-belief-update", "multi-timescale-shock-decomposition"],
+        "FT-004": ["mechanism-contrast", "evidence-triangulation", "sequential-belief-update"]
+      },
+      "additional_ops": ["read_card_unit", "inspect_checkpoint_state", "inspect_evidence_set", "verify_evidence_anchors"],
+      "max_steps": 24,
+      "max_card_reads": 12
+    }
+  }
+}

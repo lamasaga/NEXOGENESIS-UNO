@@ -1,0 +1,10 @@
+{
+  "case_id":"FT-002",
+  "policy":"Semantic equivalents are allowed; exact tool order is not required.",
+  "by_checkpoint":{
+    "T0":{"key":["S02","S03","FT002-C01","FT002-C02","FT002-C03"],"counter":["FT002-C01"]},
+    "T1":{"key":["S04","S05","FT002-C04"],"counter":["FT002-X01"]},
+    "T2":{"key":["S06","S07","S08","S09","FT002-C05","FT002-C06"],"counter":["FT002-X01"]}
+  },
+  "capability_expectations":{"C_graphops":["retrieve","read-evidence-slice","compare-or-traverse"],"D_full":["retrieve","read-evidence-slice","compare-or-traverse","thinking-model-selected","observation-changed-next-action"]}
+}

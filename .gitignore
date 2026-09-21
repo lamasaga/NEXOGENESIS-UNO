@@ -1,0 +1,44 @@
+# 实例知识与任务产物：永远不进入核心仓
+/00-Inbox/
+/01-Cards/
+/02-Profile/
+/03-Archive/
+/04-OutBox/
+/05-Buffer/
+/06-Journal/
+/07-Conversations/
+
+# 本地运行状态与可重建中间文件
+/.nexogenesis/
+/tmp/
+/instances/
+/artifacts/
+/output/
+/test-results/
+/coverage/
+.env.*
+
+# 前端与依赖
+node_modules/
+web/node_modules/
+web/dist/
+web/tsconfig.tsbuildinfo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# 环境与密钥
+.env
+
+# 会话与运行数据（DSH 用户级数据在 $DSH_HOME，不入库）
+*.log
+
+# Peer knowledge libraries remain instance data
+/knowledge-bases/
+
+# Local visual verification output; keep editable design pages in source control.
+/docs/design/**/.verification/
+/docs/design/*.visual-check.*

@@ -1,0 +1,19 @@
+country,country_code,indicator,observation_period,value,unit,published_at,available_at,source_id,allowed_checkpoint,note
+Indonesia,IDN,private_credit_growth_relative_to_gdp_growth,1996,5.7,percentage_points,1997-06-09,1997-06-09,S03,T0,BIS preliminary
+Malaysia,MYS,private_credit_growth_relative_to_gdp_growth,1996,13.1,percentage_points,1997-06-09,1997-06-09,S03,T0,BIS preliminary
+Philippines,PHL,private_credit_growth_relative_to_gdp_growth,1996,31.5,percentage_points,1997-06-09,1997-06-09,S03,T0,BIS preliminary
+Thailand,THA,private_credit_growth_relative_to_gdp_growth,1996,5.8,percentage_points,1997-06-09,1997-06-09,S03,T0,BIS preliminary
+Indonesia,IDN,private_credit_to_gdp,1995,49.1,percent,1997-06-09,1997-06-09,S03,T0,BIS table VI.6
+Malaysia,MYS,private_credit_to_gdp,1995,76.9,percent,1997-06-09,1997-06-09,S03,T0,BIS table VI.6
+Philippines,PHL,private_credit_to_gdp,1995,39.3,percent,1997-06-09,1997-06-09,S03,T0,BIS table VI.6
+Thailand,THA,private_credit_to_gdp,1995,88.7,percent,1997-06-09,1997-06-09,S03,T0,BIS table VI.6
+Thailand,THA,current_account_balance_to_gdp,1996,-8.0,percent,1997-08-20,1997-08-20,S05,T1,IMF Thailand program background
+Thailand,THA,external_debt_to_gdp,1996,50.0,percent,1997-08-20,1997-08-20,S05,T1,about 40 percent short term
+Indonesia,IDN,total_external_debt,1997-06,140.0,usd_billion,1997-10-31,1997-10-31,S07,T2,about 60 percent of GDP
+Indonesia,IDN,short_term_external_debt,1997-06,33.0,usd_billion,1997-10-31,1997-10-31,S07,T2,large private unhedged component
+Indonesia,IDN,currency_depreciation,1997-07_to_1997-10,30.0,percent_more_than,1997-10-31,1997-10-31,S07,T2,mid-July to mid-October
+Indonesia,IDN,goods_exports_to_gdp,1996,22.0,percent,1997-11-30,1997-11-30,S09,T2,RBA regional table
+Malaysia,MYS,goods_exports_to_gdp,1996,78.0,percent,1997-11-30,1997-11-30,S09,T2,RBA regional table
+Philippines,PHL,goods_exports_to_gdp,1996,25.0,percent,1997-11-30,1997-11-30,S09,T2,RBA regional table
+Thailand,THA,goods_exports_to_gdp,1996,31.0,percent,1997-11-30,1997-11-30,S09,T2,RBA regional table
+

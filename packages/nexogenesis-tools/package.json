@@ -1,0 +1,22 @@
+{
+  "name": "nexogenesis-tools",
+  "version": "0.1.0",
+  "description": "NEXOGENESIS-UNO knowledge tools, graph retrieval and controlled Markdown writes",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    "./compile-agent": "./lib/uno/agent.js",
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-llm": "^0.1.0-rc.6"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
+    "yaml": "^2.8.3"
+  }
+}

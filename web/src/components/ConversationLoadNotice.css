@@ -1,0 +1,24 @@
+.conversation-load-notice {
+  flex: 0 0 auto;
+  margin: 12px 12px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(130, 186, 212, .24);
+  border-radius: 10px;
+  background: rgba(28, 43, 54, .38);
+  color: var(--text-secondary, #becbd5);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.conversation-load-notice strong { color: var(--text-primary, #e7edf3); font-weight: 600; }
+.conversation-load-notice p { margin: 5px 0 0; }
+.conversation-load-notice__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.conversation-load-notice__actions button {
+  border: 1px solid rgba(130, 186, 212, .3);
+  border-radius: 6px;
+  padding: 5px 9px;
+  background: rgba(84, 154, 185, .12);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.conversation-load-notice__actions button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }

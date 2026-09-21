@@ -1,0 +1,19 @@
+{
+  "id": "isolated-card-integration",
+  "version": "1.2.0",
+  "purpose": "从可续接的未接入队列中选择一张卡，生成并反证少量候选端点，区分真实关系、近重复、错型、错领域与合理独立，并留下绑定当前卡片版本的处置结论。",
+  "applicable_states": ["用户明确要求整理散落或孤立卡", "已判断无关系节点确实妨碍当前知识问题的使用"],
+  "required_capabilities": ["inspect-unconnected-cards", "inspect-integration-candidates", "read-evidence-slice", "compare-semantic-dimensions", "inspect-argument", "record-structure-review"],
+  "biases": ["先区分缺领域与缺关系并沿游标续查，不重复审阅当前指纹下已有结论的卡", "候选端点必须有共享来源、共同领域、显式互指、语义单元或类型兼容等可解释信号", "精读焦点卡和少量候选，比较双方知识功能、论证方向与重复程度", "近重复、错型和错领域先进入相应处置，不用空泛关系掩盖问题", "只有主题相似时保持独立或记录具体证据缺口", "写后用原检测范围复核同一张卡，并记录最终处置"],
+  "observation_obligations": [
+    { "role": "枚举未接入队列", "accepted_capabilities": ["inspect-unconnected-cards"], "minimum_observations": 1 },
+    { "role": "生成候选端点", "accepted_capabilities": ["inspect-integration-candidates"], "minimum_observations": 1 },
+    { "role": "精读焦点与候选", "accepted_capabilities": ["read-evidence-slice"], "minimum_distinct_targets": 2, "require_full_read": true },
+    { "role": "比较知识功能与重复程度", "accepted_capabilities": ["compare-semantic-dimensions"], "minimum_observations": 1, "minimum_distinct_targets": 2 },
+    { "role": "检查论证方向", "accepted_capabilities": ["inspect-argument"], "minimum_observations": 1 },
+    { "role": "记录最终处置", "accepted_capabilities": ["record-structure-review"], "minimum_observations": 1 }
+  ],
+  "output_obligations": ["changed", "unchanged", "pending"],
+  "stop_conditions": ["原检测器确认问题已消失且已记录接入结论", "经比较确认近重复、待重分类、待调整领域、合理独立或具体证据缺口并已记录", "达到本次读取或写入预算且当前候选已有可续接结论"],
+  "write_boundary": "一次只处理 membership、relation、reclassification 或 lifecycle 中的一个层面，最多三个紧密相关操作"
+}

@@ -1,0 +1,16 @@
+{
+  "id": "knowledge-organization",
+  "version": "1.1.0",
+  "purpose": "围绕知识使用问题，比较关系整理、合并、拆分、精修、领域调整与保留现状，改善发现性、机制比较和边界可见性。",
+  "applicable_modes": ["construct"],
+  "applicable_states": ["一般建构", "重复或臃肿卡片", "已有材料难以定位", "知识解释与领域组织不清"],
+  "required_capabilities": ["read-evidence-slice", "plan-knowledge-improvement", "verify-knowledge-improvement"],
+  "biases": ["由当前问题选择工具，不把队列、连边或字数当作优化目标", "候选不足时查正文深处、替代表述和相邻路径；不宣称全库没有", "先保留独有证据、分歧和条件，再精简表达", "类比检验机制映射及失效点；关系反证可以改变方案而不必强行写入", "按使用收益和调整风险分配探索、阅读、写入与验收预算"],
+  "observation_obligations": [
+    { "role": "明确问题与可验证改善计划", "accepted_capabilities": ["plan-knowledge-improvement"], "minimum_observations": 1 },
+    { "role": "复核实际改善或明确保持与延期", "accepted_capabilities": ["verify-knowledge-improvement"], "minimum_observations": 1 }
+  ],
+  "output_obligations": ["changed", "unchanged", "pending"],
+  "stop_conditions": ["用户限定范围已改善且验收通过；一般建构完成局部计划后继续选择下一项", "范围内候选经比较均不值得改动，具体依据与待办已保存", "信息或预算不足，部分成果与后续步骤已明确延期"],
+  "write_boundary": "同一问题可切换镜头和组合单层事务；最多三个同层原子操作，计划不替代授权与 Gateway。"
+}

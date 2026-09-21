@@ -1,0 +1,20 @@
+{
+  "id": "multi-timescale-shock-decomposition",
+  "version": "0.1.0",
+  "experimental": true,
+  "purpose": "把长期结构、中期供需循环、短期事件和作用时滞分开，判断冲击是改变基线还是加速既有路径。",
+  "applicable_modes": ["assess", "report", "general"],
+  "applicable_states": ["周期力量与突发事件同时出现", "需要比较多个对象的不同时滞和价格路径"],
+  "required_capabilities": ["read-evidence-slice", "compare-semantic-dimensions", "inspect-evidence-set", "verify-evidence-anchors"],
+  "observation_obligations": [
+    {"role": "精读周期与冲击依据", "accepted_capabilities": ["read-evidence-slice"], "minimum_distinct_targets": 2, "require_full_read": true},
+    {"role": "比较时间尺度、机制和反证", "accepted_capabilities": ["compare-semantic-dimensions"], "minimum_distinct_targets": 2},
+    {"role": "检查证据结构", "accepted_capabilities": ["inspect-evidence-set"], "required_evidence_roles": ["support", "counter"]},
+    {"role": "核验证据锚点", "accepted_capabilities": ["verify-evidence-anchors"]}
+  ],
+  "evidence_roles": ["support", "counter", "boundary"],
+  "output_obligations": ["evidence_anchors"],
+  "biases": ["先分长中短尺度再综合", "事件的即时价格效应不等于长期基线改变", "投资、产能、库存和产量反应具有不同滞后", "共同因子不能抹平对象特性"],
+  "stop_conditions": ["各时间尺度及其证据已分开", "冲击是否改变基线已有明确判断", "关键时滞和失效条件已说明"],
+  "write_boundary": "实验性只读模型；仅在评测或显式允许实验模型的任务中使用"
+}

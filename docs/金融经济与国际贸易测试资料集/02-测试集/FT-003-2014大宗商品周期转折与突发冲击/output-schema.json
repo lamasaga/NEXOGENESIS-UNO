@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "FT-003 checkpoint response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "case_id", "checkpoint", "as_of", "previous_checkpoint", "evidence_anchors", "update_delta", "limitations", "commodity_forecasts",
+    "basket_probabilities", "cycle_assessment", "shock_assessment",
+    "scenarios", "common_vs_specific", "commodity_update_summary", "next_signals"
+  ],
+  "properties": {
+    "case_id": {"const": "FT-003"},
+    "checkpoint": {"enum": ["T0", "T1", "T2", "T3"]},
+    "as_of": {"type": "string", "format": "date-time"},
+    "previous_checkpoint": {"enum": [null, "T0", "T1", "T2"]},
+    "evidence_anchors": {"type": "array", "minItems": 3, "items": {"$ref": "#/$defs/evidence"}},
+    "update_delta": {"$ref": "#/$defs/updateDelta"},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "commodity_forecasts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["K1", "K2", "K3", "K4"],
+      "properties": {
+        "K1": {"$ref": "#/$defs/commodity"},
+        "K2": {"$ref": "#/$defs/commodity"},
+        "K3": {"$ref": "#/$defs/commodity"},
+        "K4": {"$ref": "#/$defs/commodity"}
+      }
+    },
+    "basket_probabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["at_least_three_decline_ge_20", "all_four_lower"],
+      "properties": {
+        "at_least_three_decline_ge_20": {"$ref": "#/$defs/probability"},
+        "all_four_lower": {"$ref": "#/$defs/probability"}
+      }
+    },
+    "cycle_assessment": {
+      "type": "array", "minItems": 2, "maxItems": 8,
+      "items": {"$ref": "#/$defs/cycle"}
+    },
+    "shock_assessment": {
+      "type": "array", "maxItems": 6,
+      "items": {"$ref": "#/$defs/shock"}
+    },
+    "scenarios": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {"$ref": "#/$defs/scenario"}
+    },
+    "common_vs_specific": {
+      "type": "object", "additionalProperties": false,
+      "required": ["common_factors", "per_commodity"],
+      "properties": {
+        "common_factors": {"type": "array", "items": {"type": "string"}},
+        "per_commodity": {
+          "type": "object", "additionalProperties": false,
+          "required": ["K1", "K2", "K3", "K4"],
+          "properties": {
+            "K1": {"type": "string"}, "K2": {"type": "string"},
+            "K3": {"type": "string"}, "K4": {"type": "string"}
+          }
+        }
+      }
+    },
+    "commodity_update_summary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["K1", "K2", "K3", "K4", "basket"],
+      "properties": {
+        "K1": {"type": "string"}, "K2": {"type": "string"},
+        "K3": {"type": "string"}, "K4": {"type": "string"},
+        "basket": {"type": "string"}
+      }
+    },
+    "next_signals": {"type": "array", "minItems": 2, "maxItems": 12, "items": {"type": "string"}}
+  },
+  "$defs": {
+    "probability": {"type": "number", "minimum": 0, "maximum": 1},
+    "interval": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "prefixItems": [{"type": "number"}, {"type": "number"}], "items": false
+    },
+    "driver": {
+      "type": "object", "additionalProperties": false,
+      "required": ["layer", "direction", "weight", "evidence", "lag"],
+      "properties": {
+        "layer": {"enum": ["long", "medium", "short"]},
+        "direction": {"enum": ["up", "down", "two-sided"]},
+        "weight": {"type": "number", "minimum": 0, "maximum": 1},
+        "evidence": {"type": "string"},
+        "lag": {"type": "string"}
+      }
+    },
+    "commodity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["annual_average_price", "decline_ge_20_probability", "h2_low_probability", "drawdown_rank", "main_drivers", "counter_evidence"],
+      "properties": {
+        "annual_average_price": {
+          "type": "object", "additionalProperties": false,
+          "required": ["point", "interval_50", "interval_90"],
+          "properties": {
+            "point": {"type": "number"},
+            "interval_50": {"$ref": "#/$defs/interval"},
+            "interval_90": {"$ref": "#/$defs/interval"}
+          }
+        },
+        "decline_ge_20_probability": {"$ref": "#/$defs/probability"},
+        "h2_low_probability": {"$ref": "#/$defs/probability"},
+        "drawdown_rank": {"type": "integer", "minimum": 1, "maximum": 4},
+        "main_drivers": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"$ref": "#/$defs/driver"}},
+        "counter_evidence": {"type": "string"}
+      }
+    },
+    "cycle": {
+      "type": "object", "additionalProperties": false,
+      "required": ["layer", "commodities", "mechanism", "current_direction", "persistence", "evidence", "disconfirming"],
+      "properties": {
+        "layer": {"enum": ["long", "medium", "short"]},
+        "commodities": {"type": "array", "items": {"enum": ["K1", "K2", "K3", "K4"]}},
+        "mechanism": {"type": "string"}, "current_direction": {"type": "string"},
+        "persistence": {"type": "string"}, "evidence": {"type": "string"},
+        "disconfirming": {"type": "string"}
+      }
+    },
+    "shock": {
+      "type": "object", "additionalProperties": false,
+      "required": ["event", "commodities", "immediate_effect", "baseline_changed", "persistence_probability", "reasoning"],
+      "properties": {
+        "event": {"type": "string"},
+        "commodities": {"type": "array", "items": {"enum": ["K1", "K2", "K3", "K4"]}},
+        "immediate_effect": {"type": "string"},
+        "baseline_changed": {"type": "boolean"},
+        "persistence_probability": {"$ref": "#/$defs/probability"},
+        "reasoning": {"type": "string"}
+      }
+    },
+    "evidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["supports", "kind", "anchor", "use"],
+      "properties": {
+        "supports": {"type": "string"},
+        "kind": {"enum": ["support", "counter", "boundary"]},
+        "anchor": {"type": "string", "pattern": "^(S[0-9]{2}|FT003-[A-Z][0-9]{2})(#[A-Za-z0-9._-]+)?$"},
+        "use": {"type": "string"}
+      }
+    },
+    "updateDelta": {
+      "type": "object", "additionalProperties": false,
+      "required": ["changed", "unchanged", "why"],
+      "properties": {
+        "changed": {"type": "array", "items": {"type": "string"}},
+        "unchanged": {"type": "array", "items": {"type": "string"}},
+        "why": {"type": "string"}
+      }
+    },
+    "scenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "probability", "trigger", "commodity_pattern"],
+      "properties": {
+        "name": {"type": "string"}, "probability": {"$ref": "#/$defs/probability"},
+        "trigger": {"type": "string"}, "commodity_pattern": {"type": "string"}
+      }
+    }
+  }
+}

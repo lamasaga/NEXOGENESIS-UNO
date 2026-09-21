@@ -1,0 +1,168 @@
+## 结论
+
+  VCP 确实值得借鉴，但你应当借鉴的是它的“查询驱动注意力、有限图传播、未解释信息残差”，而不是照搬 TagMemo、RiverMemo、EPA 及整套自定义协议。
+
+  你的项目实际上已经具备了更适合知识图谱治理的骨架：
+
+- Skill：规定目标、权限、预算和停止条件。
+- TM：规定分析视角、证据角色与观察义务。
+- OPS：提供确定、可复查的图谱观察。
+- Workspace：保存假设、证据、反证、开放问题和候选动作。
+- Harness：只在操作边界校验和写入，不干涉模型如何思考。
+
+  这已经非常接近你要的 `Skill × TM × OPS`。真正缺少的不是再造一个“思维状态对象”，而是增加一层会随观察结果变化的动态注意力。
+
+## `Skill × TM × OPS` 应该如何理解
+
+  它不是固定工作流，也不是三个模块依次执行，而是一次运行时组合：
+
+\[
+\text{有效组合条件：}\quad
+R_{TM}\subseteq A_{Skill}\cap Cap(OPS_{available})
+\]
+
+其中：
+
+- \(R_{TM}\)：当前 TM 要求具备的能力。
+- \(A_{Skill}\)：当前 Skill 允许使用的能力。
+- \(Cap(OPS_{available})\)：运行时真实可用 OPS 所提供的能力。
+
+  当前代码已经分别实现了 TM 对 Operator Registry 的能力检查，以及运行范围中的 `allowed_ops` 限制，但还可以在选择 TM 时增加一次“组合交集检查”，避免运行到一半才发现 TM 的某项义务在当前 Skill 范围内根本无法完成。[Thinking Model 能力覆盖](<D:/UESR/Desktop/NEXOGENESIS-DSH/packages/nexogenesis-tools/lib/cognition/thinking-models.js:62>)、[运行范围限制](<D:/UESR/Desktop/NEXOGENESIS-DSH/packages/nexogenesis-tools/lib/cognition/run-store.js:686>)
+
+  每轮思维状态可以继续使用现有 Workspace：
+
+\[
+X_t =
+(\text{goal},\text{focus},\text{hypotheses},
+\text{evidence},\text{counterevidence},
+\text{open questions},\text{budget},TM)
+\]
+
+然后让模型自由选择：
+
+\[
+OPS_{t+1}
+=
+LLM(X_t,\ Observation_t,\ AvailableOPS)
+\]
+
+  JSON 只用于描述“我要执行哪个操作”和“工具观察到了什么”，不用于规范模型内部分析过程。项目自身其实已经明确采用这一原则：Skill 不固定调用顺序，运行状态也不保存隐藏思维链。[项目运行原则](<D:/UESR/Desktop/NEXOGENESIS-DSH/AGENTS.md:155>)、[nexo-construct 边界](<D:/UESR/Desktop/NEXOGENESIS-DSH/.agent/skills/nexo-construct/SKILL.md:12>)
+
+## 当前真正缺少的中间层
+
+  Workspace 已经有很好的状态字段：
+
+- `hypotheses`
+- `evidence`
+- `counter_evidence`
+- `open_questions`
+- `conflicts`
+- `candidate_actions`
+- `observed_nodes`
+
+  但 TM 的未完成能力和观察义务，目前主要在 `finish_cognitive_run` 时统一检查。也就是说，它更像“结束时的验收门”，还没有完全成为“运行中的注意力导航”。[Workspace 结构](<D:/UESR/Desktop/NEXOGENESIS-DSH/packages/nexogenesis-tools/lib/cognition/run-store.js:102>)、[结束时检查 TM 义务](<D:/UESR/Desktop/NEXOGENESIS-DSH/packages/nexogenesis-tools/lib/cognition/tools.js:1223>)
+
+  我建议把它提升为一个每轮都可以查看的“认知残差”：
+
+\[
+Residual_t =
+Obligations(TM)-SatisfiedObservations_t
+\]
+
+  例如当前还没有反证、还没精读第二个端点、还没有检查路径方向，这些就是“尚未解释的维度”。它不告诉模型下一步必须调用什么，只把当前欠缺暴露给模型，由模型自己决定如何补足。
+
+  这正好对应 VCP Residual Pyramid 的思想：不要继续重复强化已经覆盖的主主题，而要寻找尚未得到解释的弱信号。区别在于，你这里的残差首先应当是“证据和观察义务残差”，不必一开始就做向量正交分解。[VCP Residual Pyramid](<D:/UESR/Desktop/VCPToolBox-main/docs/TagMemo_Wave_Algorithm_Deep_Dive.md:181>)
+
+## 最值得借鉴的“语义动力学”
+
+  你的知识图谱比 VCP 的 Tag 共现图语义更严格：已经区分论证、情境、引用三个平面，还有 `argument_ready`、`context_ready`、`legacy_candidate`。所以不要另建一张 Tag 图，直接在现有 ready 关系图上形成一次运行期激活场即可。
+
+  对某一关系平面 \(p\)，可以定义：
+
+\[
+a^{(p)}
+=
+\sum_{h=0}^{H}
+\gamma^h
+\left(P_p^\mathsf{T}\right)^h s
+\]
+
+符号含义：
+
+- \(s\)：查询种子，包括用户目标、当前焦点卡和已验证假设涉及的节点。
+- \(P_p\)：关系平面 \(p\) 的传播矩阵。
+- \(P_p^\mathsf{T}\)：让当前节点的激活沿关系方向传给下一节点。
+- \(h\)：传播跳数。
+- \(H\)：最大跳数，你现有系统应保持 \(H\leq3\)。
+- \(\gamma\)：每跳衰减系数，满足 \(0<\gamma<1\)。
+- \(a^{(p)}\)：本轮查询条件下各节点的临时激活度。
+
+  每个节点的出边权重应归一化，使总出流不超过固定预算。这样大型领域枢纽不会因为边多而吞掉所有注意力，也不会在循环中无限放大。这正是 VCP 有界传播中最可靠、最可迁移的工程原则。[VCP 有界传播纪律](<D:/UESR/Desktop/VCPToolBox-main/docs/TagMemo_Wave_Algorithm_Deep_Dive.md:86>)
+
+  在你的系统里必须分别计算三个场：
+
+| 场 | 允许传播的关系 | 用途 |
+|---|---|---|
+| 论证场 | `argument_ready` | 寻找支持、反证、中介机制和论证路径 |
+| 情境场 | `context_ready` | 寻找历史、制度、时序和背景条件 |
+| 引用场 | 对象引用关系 | 寻找人物、机构、学派和来源归属 |
+
+  三个场不能混成一个总分。尤其引用场只能帮助定位对象，不能自动成为命题证据。这与你当前检索设计完全一致。[现有分平面遍历](<D:/UESR/Desktop/NEXOGENESIS-DSH/.agent/reference/retrieval-design.md:13>)
+
+## 第一版最小实现
+
+  第一版甚至不需要新增一个大型 GraphOp，可以只做三项有限改动：
+
+1. 在选择 TM 时增加 `Skill允许能力 ∩ 当前OPS能力` 的组合校验。
+2. 在 `inspect_cognitive_workspace` 返回中增加派生的 `live_requirements`：
+   - 已满足的观察义务；
+   - 尚未满足的义务；
+   - 尚缺的证据角色；
+   - 当前适用、但不强制执行的候选 OPS。
+3. 在现有 `inspect_integration_candidates` 或 `graph_walk` 的候选排序中加入临时激活分：
+   - 只沿对应平面的 ready 边传播；
+   - 最多三跳；
+   - 每节点固定出流预算；
+   - 保留激活来源、路径和跳数；
+   - 激活分只用于召回和排序，绝不升级为证据。
+
+  然后让模型结合“图激活度”和“TM 未完成义务”自主决定下一步：
+
+\[
+Utility(c)=
+\alpha Activation(c)
++\beta CoverageGain(c)
++\eta Novelty(c)
+-\lambda Cost(c)
+\]
+
+  这里的分数只是候选建议。模型依然可以拒绝最高分候选、改换 TM、缩小范围或者有证据地停止。
+
+## 一个实际组合例子
+
+  对 `nexo-construct × relation-integrity-audit × GraphOps`：
+
+- Skill 限定目标是改善一个局部结构，规定写入预算和停止边界。
+- TM 要求检查局部问题、精读两个端点、寻找反证并模拟结构影响。
+- 激活场从焦点卡出发，分别展开 ready 论证关系和情境关系。
+- Workspace 显示目前还缺少“反证”或“方向理由”。
+- 模型自行选择 `read_card`、`inspect_argument`、`graph_path` 或 `simulate_relation_patch`。
+- OPS 返回可复查 Observation。
+- TM 义务满足后才允许完成；是否修改关系仍由模型语义判断和 Harness 共同决定。
+
+  这比“先搜索→再读卡→再比较→再写入”的 JSON 状态机自由得多，同时又不会失去可观察性和安全性。
+
+## 不建议从 VCP 搬过来的部分
+
+- 不要新建一张与 Card 关系图并行的 Tag 共现图，容易产生第二语义事实源。
+- 不要让 Embedding 相似度自动生成或升级知识关系。
+- 不要立即引入 `logicDepth`、Ω、共振等数值指标；没有真实评测时，它们会变成难以解释的调参层。
+- 不要为了“语义场”先引入 Rust、SVD 和复杂场求解器。
+- 不要把 Skill 改成工具调用剧本。
+- 不要把模型的分析过程压成固定 JSON。
+
+  你的当前检索确实存在词面召回不足，但项目文档也明确要求只有真实查询反复证明不足后才增加机制。[当前检索限制](<D:/UESR/Desktop/NEXOGENESIS-DSH/.agent/reference/retrieval-design.md:43>)。因此 Embedding 最适合放在后续作为 E1 召回通道，与关键词结果融合；它仍然只是“让我看到哪些卡”，不是“替我判断关系成立”。
+
+  总体上，我会把你要的能力定义为：**自由的模型决策循环 + 显式认知残差 + 查询条件下的临时图激活场 + 严格的行动边界**。这吸收了 VCP 最有价值的部分，同时保留了 NEXOGENESIS 更严谨的关系语义和证据纪律。
+
+  本轮仅做了只读分析，没有修改你当前存在大量未提交改动的工作区；引用的 `AGENTS.md` 只作为项目协作与架构约束，没有把其中内容误当成你的功能请求。

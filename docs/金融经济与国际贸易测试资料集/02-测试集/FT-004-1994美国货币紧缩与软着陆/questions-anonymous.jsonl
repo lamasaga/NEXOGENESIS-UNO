@@ -1,0 +1,10 @@
+{"id":"FT004A-T0-Q1","checkpoint":"T0","task":"估计经济体A在下一自然年进入衰退的概率，并估计实际产出增速低于1%、消费价格十二月同比至少4%、年均失业率至少6.5%的概率。","answer_path":"event_probabilities"}
+{"id":"FT004A-T0-Q2","checkpoint":"T0","task":"预测下一自然年的实际产出增速、消费价格十二月同比和年均失业率，给出点估计、50%区间与90%区间。","answer_path":"numeric_forecasts"}
+{"id":"FT004A-T0-Q3","checkpoint":"T0","task":"比较软着陆、硬着陆和再通胀三种情景，说明机制、滞后、支持证据和反证。","answer_path":"scenarios,mechanism_assessment"}
+{"id":"FT004A-T0-Q4","checkpoint":"T0","task":"说明下一时点最值得观察的信号，并为关键判断提供可核对的证据位置。","answer_path":"next_signals,evidence_anchors"}
+{"id":"FT004A-T1-Q1","checkpoint":"T1","task":"在不删除上一轮判断的前提下更新全部概率与数值预测，说明哪些新证据真正改变了判断。","answer_path":"event_probabilities,numeric_forecasts,update_delta"}
+{"id":"FT004A-T1-Q2","checkpoint":"T1","task":"区分债券市场损失、信用收缩与实体衰退，说明当前证据支持哪一层。","answer_path":"mechanism_assessment"}
+{"id":"FT004A-T2-Q1","checkpoint":"T2","task":"纳入最后一次加息与邻国M的货币危机，更新经济体A下一年衰退概率及三种情景；不得把邻国危机直接等同于本国衰退。","answer_path":"event_probabilities,scenarios,update_delta"}
+{"id":"FT004A-T2-Q2","checkpoint":"T2","task":"说明贸易、信心、金融条件和国内需求四条渠道中，哪些已有证据，哪些仍只是待验证路径。","answer_path":"mechanism_assessment,evidence_anchors"}
+{"id":"FT004A-T3-Q1","checkpoint":"T3","task":"依据最新地区调查和会议资料作最终时点预测，更新全部概率、数值区间与情景。","answer_path":"event_probabilities,numeric_forecasts,scenarios"}
+{"id":"FT004A-T3-Q2","checkpoint":"T3","task":"总结各轮判断如何变化，哪些风险发生了但目标危机没有被证实，以及还需等待哪些结果。","answer_path":"update_delta,next_signals,evidence_anchors"}

@@ -1,0 +1,15 @@
+.voice-input { position: relative; min-width: 0; max-width: 100%; color: #cdd7df; font-size: 11px; }
+.voice-input__row { display: flex; align-items: center; gap: 6px; }
+.voice-input__start, .voice-input__cancel { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
+.voice-input button:focus-visible { outline: 2px solid #75c8e7; outline-offset: 2px; }
+.voice-input button:disabled { cursor: default; opacity: .4; }
+.voice-input__start.is-recording { color: #ffd1c9; background: rgba(224,107,89,.18); }
+.voice-input__level { width: 36px; height: 10px; accent-color: var(--blue-primary); }
+.voice-input__time { font-variant-numeric: tabular-nums; color: #ffd1c9; white-space: nowrap; }
+.voice-input__progress { color: #b9c5cf; white-space: nowrap; }
+.voice-input__announcement { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.voice-input__error { position: absolute; z-index: 5; right: 0; bottom: calc(100% + 8px); display: flex; align-items: flex-start; gap: 8px; width: 250px; max-width: calc(100vw - 96px); padding: 10px 12px; border: 1px solid rgba(237,186,145,.28); border-radius: 10px; background: #30343b; box-shadow: 0 6px 20px rgba(0,0,0,.2); color: #edba91; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.voice-input__error > span { min-width: 0; flex: 1; }
+.voice-input__error button { flex: 0 0 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 18px; line-height: 1; }
+@media (hover: hover) { .voice-input button:hover:enabled { background: rgba(150,185,205,.12); } }
+@media (pointer: coarse) { .voice-input__start, .voice-input__cancel { width: 40px; height: 40px; } }

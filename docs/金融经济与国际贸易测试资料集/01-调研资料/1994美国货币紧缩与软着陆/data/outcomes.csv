@@ -1,0 +1,13 @@
+variable,period,value,unit,source_id,notes
+real_gdp_growth,1994,4.0,percent,O02,current revised annual value
+real_gdp_growth,1995,2.7,percent,O02,current revised annual value
+unemployment_rate,1994,6.1,percent,O03,annual average
+unemployment_rate,1995,5.6,percent,O03,annual average
+cpi_change,1994-12,2.7,percent_yoy,O04,December-to-December
+cpi_change,1995-12,2.5,percent_yoy,O04,December-to-December
+federal_funds_target,1994-02-04,3.25,percent,O06,after decision
+federal_funds_target,1994-11-15,5.50,percent,O06,after decision
+federal_funds_target,1995-02-01,6.00,percent,O06,after decision
+federal_funds_target,1995-07-06,5.75,percent,O05,after decision
+federal_funds_target,1995-12-19,5.50,percent,O06,after decision
+recession_start,1995,0,binary,O01,no NBER peak in 1995

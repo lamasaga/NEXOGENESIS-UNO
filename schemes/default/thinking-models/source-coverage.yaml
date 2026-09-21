@@ -1,0 +1,10 @@
+{
+  "id": "source-coverage",
+  "version": "1.1.0",
+  "purpose": "检查一份来源材料的重要论证、证据、表图和张力是否被质料覆盖。",
+  "applicable_states": ["编译材料", "恢复中断的编译", "整体覆盖不明确"],
+  "required_capabilities": ["inspect-source-map", "audit-source-coverage", "write-buffer"],
+  "biases": ["索引与实际读取、单书对象、产物去向分别核对；小节标题不证明正文已经提取", "保留机制、证据和边界，不按标题机械切分，也不按既有卡框架提前去重", "对象在 Markdown 声明稳定 obj- 标识；第一遍落盘后从原书不同入口以 reading_pass=recall 查漏", "重大遗漏扩大同类章节复核，分层回查原文忠实度；新增 ID 占比与完成门均不证明 90% 召回", "重复表图只复用并注明来源窗口"],
+  "stop_conditions": ["关键清单均已覆盖或明确延后", "材料不可解析且已有失败收据", "达到用户授权范围"],
+  "write_boundary": "每次只写一个完整质料单元"
+}

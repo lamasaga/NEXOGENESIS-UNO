@@ -1,0 +1,272 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "UNO 编译流程 · 当前实现 v1",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "animation": "none",
+    "legend": {
+      "entries": {
+        "frontend": {
+          "label": "用户参与"
+        },
+        "backend": {
+          "label": "程序处理"
+        },
+        "database": {
+          "label": "文件写入"
+        },
+        "security": {
+          "label": "规则校验"
+        },
+        "cloud": {
+          "label": "大模型"
+        }
+      }
+    }
+  },
+  "lanes": [
+    {
+      "id": "intake",
+      "label": "A–D · 原文准备 →"
+    },
+    {
+      "id": "summary",
+      "label": "← E–H · 单批摘要"
+    },
+    {
+      "id": "settle",
+      "label": "I–L · 确认与收尾 →"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "A",
+      "lane": "intake",
+      "col": 0,
+      "type": "frontend",
+      "label": "A · 选材与主题",
+      "sublabel": "1–30 份；主题≤100字",
+      "tag": "人工选材",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "B",
+      "lane": "intake",
+      "col": 1,
+      "type": "backend",
+      "label": "B · 提取文本",
+      "sublabel": "≤20 MiB；≤200万字",
+      "tag": "程序提取文本",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "C",
+      "lane": "intake",
+      "col": 2,
+      "type": "backend",
+      "label": "C · 切分原文",
+      "sublabel": "每单元≤6,000字符",
+      "tag": "按段落或长度切分",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "D",
+      "lane": "intake",
+      "col": 3,
+      "type": "database",
+      "label": "D · 写入 Buffer",
+      "sublabel": "相同字节共享原文",
+      "tag": "保存正文与主题引用",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "E",
+      "lane": "summary",
+      "col": 3,
+      "type": "backend",
+      "label": "E · 组成批次",
+      "sublabel": "1–2单元；≤12,000字",
+      "tag": "按顺序取，不语义组稿",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "F",
+      "lane": "summary",
+      "col": 2,
+      "type": "cloud",
+      "label": "F · 模型摘要",
+      "sublabel": "1次请求；0–6张卡",
+      "tag": "输出预算8,000 tokens",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "G",
+      "lane": "summary",
+      "col": 1,
+      "type": "security",
+      "label": "G · 格式与来源检查",
+      "sublabel": "正文40–5,000字",
+      "tag": "TAG 1–12；格式校验",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "H",
+      "lane": "summary",
+      "col": 0,
+      "type": "backend",
+      "label": "H · 标题近重检查",
+      "sublabel": "相似度≥0.92",
+      "tag": "只比标题；最多4候选",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "I",
+      "lane": "settle",
+      "col": 0,
+      "type": "frontend",
+      "label": "I · 确认本批",
+      "sublabel": "手动／信任两种",
+      "tag": "近重始终需要确认",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "J",
+      "lane": "settle",
+      "col": 1,
+      "type": "database",
+      "label": "J · 保存卡片与收据",
+      "sublabel": "每批≤6张卡",
+      "tag": "保存来源状态和收据",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "K",
+      "lane": "settle",
+      "col": 2,
+      "type": "backend",
+      "label": "K · 推进或暂停",
+      "sublabel": "≤12步／10分钟",
+      "tag": "下一批、暂停或结束",
+      "width": 160,
+      "height": 92
+    },
+    {
+      "id": "L",
+      "lane": "settle",
+      "col": 3,
+      "type": "database",
+      "label": "L · 归档与结果",
+      "sublabel": "全部单元有去向",
+      "tag": "PDF／失败原件保留",
+      "width": 160,
+      "height": 92
+    }
+  ],
+  "edges": [
+    {
+      "id": "A-B",
+      "from": "A",
+      "to": "B",
+      "role": "main"
+    },
+    {
+      "id": "B-C",
+      "from": "B",
+      "to": "C",
+      "role": "main"
+    },
+    {
+      "id": "C-D",
+      "from": "C",
+      "to": "D",
+      "role": "main"
+    },
+    {
+      "id": "D-E",
+      "from": "D",
+      "to": "E",
+      "role": "main"
+    },
+    {
+      "id": "E-F",
+      "from": "E",
+      "to": "F",
+      "role": "main"
+    },
+    {
+      "id": "F-G",
+      "from": "F",
+      "to": "G",
+      "role": "main"
+    },
+    {
+      "id": "G-H",
+      "from": "G",
+      "to": "H",
+      "role": "main"
+    },
+    {
+      "id": "H-I",
+      "from": "H",
+      "to": "I",
+      "role": "main"
+    },
+    {
+      "id": "I-J",
+      "from": "I",
+      "to": "J",
+      "role": "main"
+    },
+    {
+      "id": "J-K",
+      "from": "J",
+      "to": "K",
+      "role": "main"
+    },
+    {
+      "id": "K-L",
+      "from": "K",
+      "to": "L",
+      "role": "main",
+      "label": "已处理完"
+    },
+    {
+      "id": "next-batch",
+      "from": "K",
+      "to": "E",
+      "label": "下一批／继续",
+      "role": "return",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "只在 F 调用模型",
+      "items": [
+        "两单元不等于两章；原文、卡片与 tokens 分别计数。",
+        "F 只看本批原文与主题，没有前批卡片、整章背景或跨批记忆。"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "字母固定，先对齐再修改",
+      "items": [
+        "细分用 C1／C2，不因插入步骤重排 A–L。",
+        "流程完成只表示范围已处理，不表示整书已理解或摘要已核验。"
+      ]
+    }
+  ]
+}

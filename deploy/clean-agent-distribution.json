@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "archive_root": "NEXOGENESIS-UNO",
+  "include_trees": [
+    ".agent",
+    "presets/uno-compile",
+    "docs/design/knowledge-guidance",
+    "packages/nexogenesis-tools/lib",
+    "packages/nexogenesis-web-host/lib",
+    "schemes/default",
+    "web/src",
+    "web/public/audio"
+  ],
+  "include_files": [
+    ".editorconfig",
+    ".gitignore",
+    "AGENTS.md",
+    "README.md",
+    "prepare-nexogenesis.ps1",
+    "start-nexogenesis.cmd",
+    "packages/nexogenesis-tools/package.json",
+    "packages/nexogenesis-tools/package-lock.json",
+    "packages/nexogenesis-web-host/package.json",
+    "packages/nexogenesis-web-host/package-lock.json",
+    "packages/nexogenesis-web-host/README.md",
+    "patch/cordis.patch.yml",
+    "presets/nexogenesis/agent.cordis.yml",
+    "presets/nexogenesis/preset.yml",
+    "presets/nexogenesis/README.md",
+    "web/index.html",
+    "web/package.json",
+    "web/package-lock.json",
+    "web/postcss.config.js",
+    "web/tailwind.config.js",
+    "web/tsconfig.json",
+    "web/tsconfig.node.json",
+    "web/vite.config.ts",
+    "start-nexogenesis.ps1",
+    "deploy/runtime.ps1",
+    "deploy/runtime-profile.json",
+    "docs/UNO-开发基线.md",
+    "docs/UNO-编译重构与验收.md",
+    "docs/UNO-单元编译实施.md",
+    "docs/UNO-编译与建构.md",
+    "docs/design/book-compile-method.md",
+    "docs/design/book-compile-examples.md",
+    "docs/UNO-当前实现与验证.md",
+    "docs/UNO-整体重构实施记录.md",
+    "tools/migrate-uno-libraries.ps1",
+    "tools/setup-speech.ps1",
+    "docs/UNO-语音输入.md",
+    "tools/speech/worker.py",
+    "tools/speech/download_model.py",
+    "tools/speech/requirements.txt"
+  ],
+  "mapped_files": [
+    {
+      "source": "deploy/clean-docs-README.md",
+      "target": "docs/README.md"
+    }
+  ],
+  "empty_knowledge_directories": [
+    "knowledge-bases/legacy/00-Inbox",
+    "knowledge-bases/legacy/01-Cards",
+    "knowledge-bases/legacy/02-Profile",
+    "knowledge-bases/legacy/03-Archive",
+    "knowledge-bases/legacy/04-OutBox",
+    "knowledge-bases/legacy/05-Buffer",
+    "knowledge-bases/legacy/06-Journal",
+    "knowledge-bases/legacy/07-Conversations"
+  ],
+  "excluded_directory_names": [
+    ".git",
+    ".nexogenesis",
+    "instances",
+    "node_modules",
+    "dist",
+    "tmp",
+    "coverage",
+    "__pycache__",
+    ".pytest_cache",
+    ".venv",
+    "artifacts",
+    "output",
+    "test-results"
+  ],
+  "excluded_file_names": [
+    ".env",
+    ".DS_Store",
+    "Thumbs.db",
+    "nexogenesis.instance.yml"
+  ],
+  "excluded_file_globs": [
+    ".env.*",
+    "*.log",
+    "*.pyc",
+    "*.tsbuildinfo",
+    "*.test.*",
+    "*.perf.test.*",
+    "*.map"
+  ],
+  "forbidden_payload_globs": [
+    "*.pdf",
+    "*.epub",
+    "*.docx",
+    "*.xlsx",
+    "*.pptx",
+    "*.zip",
+    "*.7z",
+    "*.rar"
+  ]
+}

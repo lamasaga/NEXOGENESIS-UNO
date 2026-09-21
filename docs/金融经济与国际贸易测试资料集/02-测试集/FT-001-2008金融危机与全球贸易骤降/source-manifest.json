@@ -1,0 +1,118 @@
+{
+  "dataset_version": "0.1.0",
+  "retrieved_at": "2026-08-29",
+  "storage_note": "仓库保存人工摘录，不保存原始网页或PDF镜像；URL内容变化时必须生成新数据集版本。",
+  "sources": [
+    {
+      "id": "S01",
+      "title": "IMF World Economic Outlook Update, July 2008",
+      "url": "https://www.imf.org/en/publications/weo/issues/2016/12/31/global-slowdown-and-rising-inflation",
+      "observation_period": "2008-H1 and forecast 2008-2009",
+      "published_at": "2008-07-17",
+      "available_at": "2008-07-17T23:59:59Z",
+      "revision_vintage": "2008-07",
+      "first_checkpoint": "T0",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S02",
+      "title": "July 2008 Senior Loan Officer Opinion Survey",
+      "url": "https://www.federalreserve.gov/boarddocs/SnLoanSurvey/200808/default.htm",
+      "observation_period": "previous three months to July 2008",
+      "published_at": "2008-08-11",
+      "available_at": "2008-08-11T23:59:59Z",
+      "revision_vintage": "2008-08-11",
+      "first_checkpoint": "T0",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S03",
+      "title": "Minutes of the FOMC, August 5, 2008",
+      "url": "https://www.federalreserve.gov/monetarypolicy/fomcminutes20080805.htm",
+      "observation_period": "information available through 2008-08-05",
+      "published_at": "2008-08-26",
+      "available_at": "2008-08-26T23:59:59Z",
+      "revision_vintage": "2008-08-26",
+      "first_checkpoint": "T0",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S04",
+      "title": "BIS Quarterly Review, September 2008",
+      "url": "https://www.bis.org/publ/qtrpdf/r_qt0809.htm",
+      "observation_period": "financial markets through August 2008",
+      "published_at": "2008-09-01",
+      "available_at": "2008-09-01T23:59:59Z",
+      "revision_vintage": "2008-09-01",
+      "first_checkpoint": "T0",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S05",
+      "title": "October 2008 Senior Loan Officer Opinion Survey",
+      "url": "https://www.federalreserve.gov/boarddocs/SnloanSurvey/200811/default.htm",
+      "observation_period": "previous three months to October 2008",
+      "published_at": "2008-11-03",
+      "available_at": "2008-11-03T19:00:00Z",
+      "revision_vintage": "2008-11-03",
+      "first_checkpoint": "T1",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S06",
+      "title": "IMF World Economic Outlook Update, November 2008",
+      "url": "https://www.elibrary.imf.org/view/book/9798400229367/9798400229367.xml",
+      "observation_period": "forecast 2008-2009",
+      "published_at": "2008-11-06",
+      "available_at": "2008-11-06T23:59:59Z",
+      "revision_vintage": "2008-11-06",
+      "first_checkpoint": "T1",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S07",
+      "title": "Survey of Professional Forecasters, 2008 Q4",
+      "url": "https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/2008/spfq408.pdf?la=en",
+      "observation_period": "forecast 2008-Q4 through 2009-Q4",
+      "published_at": "2008-11-17",
+      "available_at": "2008-11-17T23:59:59Z",
+      "revision_vintage": "2008-Q4",
+      "first_checkpoint": "T1",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S08",
+      "title": "BIS Quarterly Review, December 2008",
+      "url": "https://www.bis.org/publ/qtrpdf/r_qt0812.htm",
+      "observation_period": "financial markets through November 2008",
+      "published_at": "2008-12-08",
+      "available_at": "2008-12-08T23:59:59Z",
+      "revision_vintage": "2008-12-08",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S09",
+      "title": "World Bank Global Economic Prospects 2009",
+      "url": "https://documents1.worldbank.org/curated/en/361181630081566198/pdf/Announcement-of-Global-Slump-Hits-Developing-Countries-as-Credit-Squeeze-Impedes-Growth-and-Trade-and-Tensions-in-Commodity-Markets-Ease-on-December-9-2008.pdf",
+      "observation_period": "forecast 2008-2010",
+      "published_at": "2008-12-09",
+      "available_at": "2008-12-09T23:59:59Z",
+      "revision_vintage": "2008-12-09",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S10",
+      "title": "IMF World Economic Outlook Update, January 2009",
+      "url": "https://www.imf.org/external/pubs/ft/weo/2009/update/01/index.htm",
+      "observation_period": "forecast 2009-2010",
+      "published_at": "2009-01-28",
+      "available_at": "2009-01-28T23:59:59Z",
+      "revision_vintage": "2009-01-28",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary"
+    }
+  ]
+}
+

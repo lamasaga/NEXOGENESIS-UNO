@@ -1,0 +1,16 @@
+{
+  "case_id": "FT-004",
+  "visible_sources": [
+    {"id":"S01","released_at":"1994-02-04","title":"Federal Reserve policy statement","url":"https://www.federalreserve.gov/fomc/19940204default.htm"},
+    {"id":"S02","released_at":"1994-03-25","title":"February 1994 FOMC minutes","url":"https://www.federalreserve.gov/fomc/MINUTES/1994/19940204min.htm"},
+    {"id":"S03","released_at":"1994-08-16","title":"Federal Reserve policy statement","url":"https://www.federalreserve.gov/fomc/19940816default.htm"},
+    {"id":"S04","released_at":"1994-09-30","title":"August 1994 FOMC minutes","url":"https://www.federalreserve.gov/fomc/MINUTES/1994/19940816min.htm"},
+    {"id":"S05","released_at":"1994-12-22","title":"November 1994 FOMC minutes","url":"https://www.federalreserve.gov/fomc/MINUTES/1994/19941115min.htm"},
+    {"id":"S06","released_at":"1995-02-01","title":"Federal Reserve policy statement","url":"https://www.federalreserve.gov/fomc/19950201default.htm"},
+    {"id":"S07","released_at":"1995-02-01","title":"IMF Mexico support announcement","url":"https://www.imf.org/en/news/articles/2015/09/14/01/49/pr9510"},
+    {"id":"S08","released_at":"1995-03-15","title":"Federal Reserve Beige Book","url":"https://www.federalreserve.gov/monetarypolicy/files/fomc19950328beige19950315.pdf"},
+    {"id":"S09","released_at":"1995-03-31","title":"February 1995 FOMC minutes","url":"https://www.federalreserve.gov/fomc/minutes/1995/19950201min.htm"}
+  ],
+  "outcome_sources": ["O01", "O02", "O03", "O04", "O05", "O06", "O07"],
+  "rule": "Only sources released on or before the checkpoint as_of may be materialized."
+}

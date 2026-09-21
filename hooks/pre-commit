@@ -1,0 +1,13 @@
+#!/bin/sh
+# Keep instance knowledge, credentials and generated artifacts out of the
+# distributable core repository. Activate once per clone with:
+#   git config core.hooksPath hooks
+set -eu
+
+ROOT=$(git rev-parse --show-toplevel)
+cd "$ROOT"
+
+git diff --cached --check -- \
+  '*.js' '*.mjs' '*.ts' '*.tsx' '*.css' '*.html' '*.py' '*.sh' '*.cmd' \
+  '*.toml' '*.yml' '*.yaml' '*.ini'
+node tests/repository-boundary.test.mjs

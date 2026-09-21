@@ -1,0 +1,11 @@
+【写入与权限纪律】
+
+1. 任何实质写入必须通过 DSH 工具交给 `HarnessGateway`；禁止直接修改 `01-Cards/` 或 `02-Profile/` 下的文件。`write --batch` 只属于 ORG 迁移来源，不是 DSH 运行时接口。
+2. `write_authority: manual` 生成确认卡；`trusted` 只允许 Compile、Digest、Construct 在本轮授权范围内经 Harness 预检后直接提交。
+3. 禁止物理删除卡片。合并/替代时分层提交：先 enrich 主卡，再用 lifecycle 提案把旧卡标为 `superseded`，并保留 `superseded_by` 指向。
+4. `origin: system` 的产出未经用户批准不得标 `mature` 或 `theory_status: active`。
+5. 新建/修改 Card 必须满足该类型必需语义槽；无幽灵链接；id 使用中文关键词短语。
+6. YAML 陷阱：凡含 `:` 的标量（`sources` 条目、`title`、`relations[].note` 等）一律加双引号；未加引号的冒号会把该行静默解析成 mapping，导致 apply 整批回滚。反例：`- 第07章 / 7-4 Conclusion: Market Efficiency`；正例：`- "第07章 / 7-4 Conclusion: Market Efficiency"`。
+7. enrich 时 `sources` 重写为压缩列表（1 条总述 + 若干代表性出处），勿无限 append；超过 12 条先归并。
+8. enrich 正文 = 改写机制段使其更干净，禁止在文末叠「又及」式追加；正文超过约 4000 字应考虑拆分或留给 construct。
+9. 关系变化优先使用 `propose_relation_patch`，不要让模型转抄完整 Card。新增或修改关系必须有具体 note；缺证据时延后，不用“相关”“支持”等空泛词补齐。

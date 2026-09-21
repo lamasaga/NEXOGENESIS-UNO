@@ -1,0 +1,109 @@
+{
+  "dataset_version": "0.1.0",
+  "retrieved_at": "2026-08-29",
+  "storage_note": "测试输入为人工摘录；原始网页和PDF未镜像。月度出版物使用月末作为保守available_at。",
+  "sources": [
+    {
+      "id": "S01",
+      "title": "Asian Development Outlook 1997 and 1998",
+      "url": "https://www.adb.org/publications/asian-development-outlook-1997-1998",
+      "observation_period": "1996 estimate and 1997-1998 forecast",
+      "published_at": "1997-04-30",
+      "date_precision": "month",
+      "available_at": "1997-04-30T23:59:59Z",
+      "revision_vintage": "1997-04",
+      "first_checkpoint": "T0",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S02",
+      "title": "IMF World Economic Outlook, May 1997",
+      "url": "https://www.imf.org/external/pubs/weomay/weocon.htm",
+      "observation_period": "1996 conditions and 1997-1998 forecast",
+      "published_at": "1997-05-15",
+      "available_at": "1997-05-15T23:59:59Z",
+      "revision_vintage": "1997-05",
+      "first_checkpoint": "T0",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S03",
+      "title": "BIS 67th Annual Report",
+      "url": "https://www.bis.org/publ/ar67f01.htm",
+      "observation_period": "mainly 1995-1996 and early 1997",
+      "published_at": "1997-06-09",
+      "available_at": "1997-06-09T23:59:59Z",
+      "revision_vintage": "1997-06-09",
+      "first_checkpoint": "T0",
+      "excerpt_type": "manual_summary_and_table"
+    },
+    {
+      "id": "S04",
+      "title": "IMF extension and augmentation of Philippines EFF",
+      "url": "https://www.imf.org/en/news/articles/2015/09/14/01/49/pr9733",
+      "observation_period": "policy through 1997-07-18",
+      "published_at": "1997-07-18",
+      "available_at": "1997-07-18T23:59:59Z",
+      "revision_vintage": "1997-07-18",
+      "first_checkpoint": "T1",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S05",
+      "title": "IMF Stand-by Credit for Thailand",
+      "url": "https://www.imf.org/external/np/sec/pr/1997/pr9737.htm",
+      "observation_period": "conditions through 1997-08-20",
+      "published_at": "1997-08-20",
+      "available_at": "1997-08-20T23:59:59Z",
+      "revision_vintage": "1997-08-20",
+      "first_checkpoint": "T1",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S06",
+      "title": "IMF World Economic Outlook, October 1997",
+      "url": "https://www.elibrary.imf.org/display/book/9781557756817/9781557756817.xml",
+      "observation_period": "1997 conditions and 1998 forecast",
+      "published_at": "1997-10-01",
+      "available_at": "1997-10-01T23:59:59Z",
+      "revision_vintage": "1997-10",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary_and_forecast_table"
+    },
+    {
+      "id": "S07",
+      "title": "Indonesia Letter of Intent",
+      "url": "https://www.imf.org/external/np/loi/103197.htm",
+      "observation_period": "conditions through 1997-10-31",
+      "published_at": "1997-10-31",
+      "available_at": "1997-10-31T23:59:59Z",
+      "revision_vintage": "1997-10-31",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S08",
+      "title": "IMF Stand-by Credit for Indonesia",
+      "url": "https://www.imf.org/en/news/articles/2015/09/14/01/49/pr9750",
+      "observation_period": "policy through 1997-11-05",
+      "published_at": "1997-11-05",
+      "available_at": "1997-11-05T23:59:59Z",
+      "revision_vintage": "1997-11-05",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary"
+    },
+    {
+      "id": "S09",
+      "title": "Reserve Bank of Australia Semi-Annual Statement, November 1997",
+      "url": "https://www.rba.gov.au/publications/bulletin/1997/nov/2.html",
+      "observation_period": "market conditions through November 1997; 1996 trade shares",
+      "published_at": "1997-11-30",
+      "date_precision": "month",
+      "available_at": "1997-11-30T23:59:59Z",
+      "revision_vintage": "1997-11",
+      "first_checkpoint": "T2",
+      "excerpt_type": "manual_summary_and_table"
+    }
+  ]
+}
+

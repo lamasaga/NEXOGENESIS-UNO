@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "type": "workflow",
+  "output": "uno-compile-v1.html",
+  "specification": {
+    "sha256": "0874188041415556c1a42fef29e5db6a1a2acca263259e72a41fc333a2ef389a",
+    "bytes": 5708
+  },
+  "artifact": {
+    "sha256": "7f308159d39cc09c5b41aad7d8816b9d13072fa85cf144e824f72bde676cdce4",
+    "bytes": 718000
+  },
+  "validation": {
+    "checksPassed": 9,
+    "checkCount": 9,
+    "qualityProfile": "showcase",
+    "compositionStatus": "pass",
+    "errors": 0,
+    "warnings": 0
+  },
+  "browserEvidence": {
+    "status": "pass",
+    "receipt": "uno-compile-v1.visual-check.json",
+    "viewports": [
+      "1440x900",
+      "1600x1000",
+      "1920x1080",
+      "2048x1320"
+    ],
+    "themes": [
+      "light",
+      "dark"
+    ]
+  },
+  "visualReview": {
+    "status": "reviewed",
+    "screenshotsInspected": [
+      "uno-compile-v1.visual-check.1440x900.light.png",
+      "uno-compile-v1.visual-check.1440x900.dark.png",
+      "uno-compile-v1.visual-check.2048x1320.light.png",
+      "uno-compile-v1.visual-check.2048x1320.dark.png"
+    ],
+    "postDeliveryCorrectionRounds": 0,
+    "notes": "All twelve nodes and arrows visible. Small overview labels can be enlarged in the viewer; full quantities are in the companion detail pages."
+  },
+  "companion": {
+    "output": "uno-compile-alignment.html",
+    "scope": "Separate companion, not itself subject to Archify 9-check receipt.",
+    "verified": [
+      "Click diagram C opens C details",
+      "A-L navigation",
+      "C note included in versioned export",
+      "Copy success visible",
+      "Note survives reload",
+      "Desktop and 390px detail layout visually inspected"
+    ],
+    "limitations": [
+      "Browser inspection logged two MutationObserver TypeErrors during DOM evaluation; origin was not established. Core interactions were verified, but a clean-console result is not claimed."
+    ]
+  },
+  "sourceSnapshot": {
+    "date": "2026-09-12",
+    "files": {
+      "packages/nexogenesis-web-host/lib/uno-jobs.js": "a6dc6dae830b47edd388356222331abd1beca376fceaf713ce2fbacdd4141e6b",
+      "packages/nexogenesis-tools/lib/harness/uno-storage.js": "b31ba9e1ed5d90db3c121dfbb164328061a52f2a4b77a1b47ded2673cbeb7880",
+      "packages/nexogenesis-tools/lib/uno-contract.js": "18b2bf00cd34aacd95c03d079424cfdd19120bb721b0f60e00059dee679a1c85"
+    },
+    "runtimeVerified": false
+  }
+}

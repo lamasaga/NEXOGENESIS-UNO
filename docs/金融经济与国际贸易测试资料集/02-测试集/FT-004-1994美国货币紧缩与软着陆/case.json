@@ -1,0 +1,124 @@
+{
+  "case_id": "FT-004",
+  "title": "1994—1995年美国货币紧缩与软着陆",
+  "dataset_version": "0.3.0",
+  "status": "human-runnable-with-graph-fixture",
+  "period": {
+    "start": "1994-02-04T00:00:00Z",
+    "end": "1995-03-31T23:59:59Z",
+    "target_year": 1995
+  },
+  "targets": [
+    "us_recession_starts_in_1995",
+    "real_gdp_growth_below_1_pct",
+    "cpi_december_yoy_at_least_4_pct",
+    "annual_unemployment_at_least_6_5_pct",
+    "real_gdp_growth_slows_at_least_1pp",
+    "fed_cuts_target_by_end_1995",
+    "real_gdp_growth_point_and_intervals",
+    "cpi_point_and_intervals",
+    "unemployment_point_and_intervals"
+  ],
+  "checkpoints": [
+    {
+      "id": "T0",
+      "as_of": "1994-03-25T23:59:59Z",
+      "named_visible_files": ["input/T0-具名.md"],
+      "anonymous_visible_files": ["input/T0-匿名.md"],
+      "fixture_release": "T0"
+    },
+    {
+      "id": "T1",
+      "as_of": "1994-09-30T23:59:59Z",
+      "named_visible_files": ["input/T0-具名.md", "input/T1-具名.md"],
+      "anonymous_visible_files": ["input/T0-匿名.md", "input/T1-匿名.md"],
+      "fixture_release": "T1"
+    },
+    {
+      "id": "T2",
+      "as_of": "1995-02-03T23:59:59Z",
+      "named_visible_files": ["input/T0-具名.md", "input/T1-具名.md", "input/T2-具名.md"],
+      "anonymous_visible_files": ["input/T0-匿名.md", "input/T1-匿名.md", "input/T2-匿名.md"],
+      "fixture_release": "T2"
+    },
+    {
+      "id": "T3",
+      "as_of": "1995-03-31T23:59:59Z",
+      "named_visible_files": ["input/T0-具名.md", "input/T1-具名.md", "input/T2-具名.md", "input/T3-具名.md"],
+      "anonymous_visible_files": ["input/T0-匿名.md", "input/T1-匿名.md", "input/T2-匿名.md", "input/T3-匿名.md"],
+      "fixture_release": "T3"
+    }
+  ],
+  "variant_question_files": {
+    "named": "questions.jsonl",
+    "anonymous": "questions-anonymous.jsonl"
+  },
+  "always_visible_files": ["output-schema.json"],
+  "fixture_manifest": "fixture/manifest.json",
+  "forbidden_to_agent": ["evaluator/", "../../01-调研资料/", "checksums.sha256"],
+  "execution_profiles": {
+    "A_naked": {
+      "skill": null,
+      "fixture": false,
+      "visible_case_material": false,
+      "allowed_thinking_models": [],
+      "allowed_ops": [],
+      "max_steps": 1,
+      "read_only": true
+    },
+    "B_fixed_packet": {
+      "skill": null,
+      "fixture": false,
+      "visible_case_material": true,
+      "allowed_thinking_models": [],
+      "allowed_ops": [],
+      "max_steps": 3,
+      "read_only": true
+    },
+    "C_graphops": {
+      "skill": null,
+      "fixture": true,
+      "visible_case_material": false,
+      "allowed_thinking_models": [],
+      "allowed_ops": ["retrieve", "read_card", "trace_source", "compare_cards", "graph_walk", "graph_path", "inspect_argument"],
+      "max_steps": 18,
+      "max_card_reads": 10,
+      "max_graph_hops": 2,
+      "read_only": true
+    },
+    "D_full": {
+      "skill": "nexo-judge",
+      "fixture": true,
+      "visible_case_material": false,
+      "allowed_thinking_models": ["mechanism-contrast", "scenario-conditions", "evidence-triangulation", "sequential-belief-update"],
+      "allowed_ops": ["retrieve", "read_card", "read_card_unit", "trace_source", "compare_cards", "graph_walk", "graph_path", "inspect_argument", "inspect_checkpoint_state", "inspect_evidence_set", "verify_evidence_anchors"],
+      "max_steps": 24,
+      "max_card_reads": 12,
+      "max_graph_hops": 2,
+      "read_only": true
+    }
+  },
+  "evaluation": {
+    "automatic": [
+      "binary_brier",
+      "real_gdp_absolute_error",
+      "cpi_absolute_error",
+      "unemployment_absolute_error",
+      "interval_50_hit",
+      "interval_90_hit",
+      "schema_valid",
+      "time_boundary",
+      "evidence_anchor_valid",
+      "ops_trace_match"
+    ],
+    "human": [
+      "risk_event_separation",
+      "mechanism_and_lag",
+      "counter_evidence",
+      "scenario_calibration",
+      "update_proportionality",
+      "graph_contribution",
+      "user_readability"
+    ]
+  }
+}

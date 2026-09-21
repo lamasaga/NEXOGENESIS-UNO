@@ -1,0 +1,69 @@
+{
+  "case_id": "FT-003",
+  "target_year": 2015,
+  "previous_year": 2014,
+  "source_ids": ["O04", "O05"],
+  "commodities": {
+    "K1": {
+      "name": "crude_oil_average",
+      "unit": "usd_per_barrel",
+      "annual_average_source": "O04",
+      "monthly_path_source": "O05",
+      "annual_average_previous": 96.2,
+      "annual_average_target": 50.8,
+      "annual_change_pct": -47.1933,
+      "decline_ge_20": true,
+      "annual_low_month": "2015-12",
+      "annual_low_value": 36.57,
+      "annual_low_in_h2": true,
+      "drawdown_rank": 1
+    },
+    "K2": {
+      "name": "copper",
+      "unit": "usd_per_metric_ton",
+      "annual_average_source": "O04",
+      "monthly_path_source": "O05",
+      "annual_average_previous": 6863.0,
+      "annual_average_target": 5510.0,
+      "annual_change_pct": -19.7144,
+      "decline_ge_20": false,
+      "annual_low_month": "2015-12",
+      "annual_low_value": 4638.83,
+      "annual_low_in_h2": true,
+      "drawdown_rank": 4
+    },
+    "K3": {
+      "name": "iron_ore",
+      "unit": "usd_per_dry_metric_ton",
+      "annual_average_source": "O04",
+      "monthly_path_source": "O05",
+      "annual_average_previous": 96.9,
+      "annual_average_target": 55.8,
+      "annual_change_pct": -42.4149,
+      "decline_ge_20": true,
+      "annual_low_month": "2015-12",
+      "annual_low_value": 40.50,
+      "annual_low_in_h2": true,
+      "drawdown_rank": 2
+    },
+    "K4": {
+      "name": "wheat_us_hrw",
+      "unit": "usd_per_metric_ton",
+      "annual_average_source": "O04",
+      "monthly_path_source": "O05",
+      "annual_average_previous": 284.9,
+      "annual_average_target": 203.0,
+      "annual_change_pct": -28.7469,
+      "decline_ge_20": true,
+      "annual_low_month": "2015-09",
+      "annual_low_value": 172.70,
+      "annual_low_in_h2": true,
+      "drawdown_rank": 3
+    }
+  },
+  "basket": {
+    "equal_weight_average_change_pct": -34.5174,
+    "at_least_three_decline_ge_20": true,
+    "all_four_lower": true
+  }
+}

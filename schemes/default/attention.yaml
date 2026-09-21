@@ -1,0 +1,154 @@
+# Nexogenesis 注意力 / 短期记忆 / 强信号 — 默认配置
+# 用法：复制或覆盖到 .nexogenesis/attention.yaml 做项目级调参
+# 合并：项目文件覆盖本文件同名键；改完无需改代码（实现后生效）
+#
+# 设计说明见：.agent/reference/thinking-body.md
+
+version: 1
+
+# 当前默认预设：talk | answer | judge | digest
+active_profile: talk
+
+# ── 短期记忆（按会话卷，不按自然日）────────────────────────
+stm:
+  max_sessions: 10
+  # 超出后：drop = 丢掉最旧一卷；fossil = 只留一行标题化石
+  overflow: drop
+  # 热槽写入频率：every_turn | every_n_turns
+  update: every_turn
+  every_n_turns: 2
+  path: .nexogenesis/memory/stm
+
+# ── 全局预算（可被 profile 覆盖）────────────────────────────
+budget:
+  chars: 16000
+  card_slots: 12
+  rag_chunks: 6
+  recent_turns_in_prompt: 4
+
+# ── 双账户席位：扩展联结 × 冲突拉扯 ─────────────────────────
+# 总卡位 ≈ core + expansion + conflict（实现时可再扣预算字符）
+slots:
+  core: 3          # 种子 + 本会话已引用
+  expansion: 6     # 偏「惊艳但合理的旧卡」
+  conflict: 2      # 保底对立面（先占席，再填 expansion）
+
+# ── 评分权重（0~1 量级，实现时会归一化）─────────────────────
+weights:
+  expansion:
+    relevance: 0.55
+    novelty: 0.35      # 未引用、弱连接、桥接加分
+    already_cited_penalty: 0.40
+  conflict:
+    relevance: 0.40
+    tension_match: 0.35
+    conflicts_edge: 0.25
+
+# 答题骨架偏置：结构召回 ≠ 图表种子
+# talk/answer 优先 model/conflict/entity；图表类 phenomenon 降权
+# 事后事实序列默认外查，不靠堆卡膨胀
+type_priors:
+  enabled: true
+  by_type:
+    model: 0.45
+    conflict: 0.40
+    entity: 0.35
+    method: 0.25
+    claim: 0.10
+    phenomenon: -0.05
+    domain: 0.05
+  chart_phenomenon_penalty: -0.40
+  maturity_bonus:
+    seed: 0.0
+    growing: 0.15
+    mature: 0.25
+
+# 图遍历
+graph:
+  hops: 2
+  prefer_bridge_nodes: true
+  # 扩展账户是否优先二跳弱邻（略降直接邻居重复）
+  expansion_prefer_weak_ties: true
+
+# 工具书（RAG）
+rag:
+  enabled: true
+  max_chunks: 6
+  # 质料不得直接升格为 Card；nascent 须可见
+  mark_nascent: true
+
+# ── 模式预设：只改差异项 ───────────────────────────────────
+profiles:
+  talk:
+    budget:
+      chars: 16000
+      card_slots: 12
+      rag_chunks: 6
+    slots:
+      core: 3
+      expansion: 6
+      conflict: 2
+    rag_kinds:
+      - discussion
+      - archive
+      - outbox
+      - card_excerpt
+
+  answer:
+    budget:
+      rag_chunks: 8
+    slots:
+      expansion: 5
+      conflict: 2
+    rag_kinds:
+      - discussion
+      - archive
+      - outbox
+      - card_excerpt
+
+  judge:
+    # 判断时略增冲突席，仍保留扩展
+    slots:
+      core: 3
+      expansion: 4
+      conflict: 3
+    weights:
+      conflict:
+        relevance: 0.35
+        tension_match: 0.40
+        conflicts_edge: 0.25
+    rag_kinds:
+      - discussion
+      - archive
+      - card_excerpt
+
+  digest:
+    slots:
+      expansion: 4
+      conflict: 1
+    rag_kinds:
+      - buffer
+      - archive
+      - discussion
+
+# ── 强信号（门铃；与注意力分离）────────────────────────────
+strong_signals:
+  enabled: true
+  # 同会话主动「要不要留下」上限（用户说「记一下」不计）
+  max_capture_prompts_per_session: 2
+  cooldown_turns: 6
+  ask_on:
+    explicit_capture_phrase: true
+    reusable_new_claim: true
+    clear_tension: true
+    repeated_question_in_stm: true
+    high_risk_topic: true
+    inbox_mention: true
+  # 用户说「先别记」后，本会话关闭主动捕获
+  honor_user_directives: true
+
+# 会话临时覆盖（实现后可由对话写入 STM，不必改本文件）
+# session_overrides 示例：
+#   slots: { conflict: 4, expansion: 4 }
+#   note: "用户本轮要求多拉冲突"
+session_overrides: {}

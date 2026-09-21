@@ -1,0 +1,72 @@
+{
+  "case_id": "FT-001",
+  "evaluator_only": true,
+  "primary_target": {
+    "id": "world_merchandise_trade_volume_growth_2009",
+    "unit": "percent",
+    "scope": "world merchandise trade volume",
+    "first_public_forecast_after_test_period": {
+      "value": -9.0,
+      "published_at": "2009-03-23",
+      "source": "https://www.wto.org/english/news_e/pres09_e/pr554_e.htm",
+      "note": "WTO forecast, not an observed outcome"
+    },
+    "first_release_outcome": {
+      "value": -12.2,
+      "published_at": "2010-03-26",
+      "source": "https://www.wto.org/english/news_e/pres10_e/pr598_e.htm",
+      "note": "WTO estimate based on provisional full-year data"
+    },
+    "latest_revised_outcome": {
+      "value": null,
+      "status": "not_frozen",
+      "note": "尚未取得并冻结与WTO首发口径一致的当前历史版本；0.1.0只对first_release_outcome评分。"
+    }
+  },
+  "binary_events": {
+    "world_merchandise_trade_volume_growth_2009_lt_0": true,
+    "world_merchandise_trade_volume_growth_2009_le_minus_5": true
+  },
+  "context_outcomes": {
+    "world_output_growth_2009_market_exchange_rates": -2.3,
+    "world_merchandise_trade_value_growth_2009": -23.0,
+    "developed_economy_export_volume_growth_2009": -15.3
+  },
+  "mechanism_reference": [
+    {
+      "name": "global_final_demand_collapse",
+      "role": "primary",
+      "reason": "财富、信心、信贷和投资共同压低耐用品与资本品需求。"
+    },
+    {
+      "name": "trade_product_composition",
+      "role": "amplifier",
+      "reason": "耐用品和投资品在贸易中的比重高于其在总产出中的比重。"
+    },
+    {
+      "name": "global_supply_chains_and_synchronization",
+      "role": "amplifier",
+      "reason": "中间品多次跨境计量，且各地区同步收缩。"
+    },
+    {
+      "name": "inventory_adjustment",
+      "role": "plausible_amplifier",
+      "reason": "企业在需求和融资不确定时快速削减订单与库存。"
+    },
+    {
+      "name": "trade_finance_constraints",
+      "role": "secondary_amplifier",
+      "reason": "融资价格和可得性恶化，但后续研究不支持其单独解释总降幅。"
+    },
+    {
+      "name": "protectionism",
+      "role": "secondary_risk_not_primary",
+      "reason": "存在限制措施和压力，但没有出现足以解释全球降幅的全面壁垒升级。"
+    }
+  ],
+  "hindsight_sources": [
+    "https://www.wto.org/english/news_e/pres10_e/pr598_e.htm",
+    "https://www.imf.org/en/publications/wp/issues/2016/12/31/trade-and-trade-finance-in-the-2008-09-financial-crisis-24593"
+  ]
+}
+

@@ -1,0 +1,19 @@
+{
+  "id": "sequential-belief-update",
+  "version": "1.0.0",
+  "purpose": "在冻结上一时点判断的前提下，用本轮新增证据更新概率、区间、机制与未知项，并区分风险信号、传导路径和目标事件。",
+  "applicable_modes": ["assess", "report", "general"],
+  "applicable_states": ["存在上一时点输出", "历史情景按 checkpoint 顺序展开", "需要说明判断为何改变或保持"],
+  "required_capabilities": ["inspect-checkpoint-update", "read-evidence-slice", "inspect-evidence-set", "verify-evidence-anchors"],
+  "observation_obligations": [
+    {"role": "读取冻结的上一时点判断", "accepted_capabilities": ["inspect-checkpoint-update"]},
+    {"role": "精读本轮新增证据", "accepted_capabilities": ["read-evidence-slice"], "minimum_distinct_targets": 1, "require_full_read": true},
+    {"role": "检查支持、反证与边界", "accepted_capabilities": ["inspect-evidence-set"], "required_evidence_roles": ["support", "counter"]},
+    {"role": "核验本轮使用的证据锚点", "accepted_capabilities": ["verify-evidence-anchors"]}
+  ],
+  "evidence_roles": ["support", "counter", "boundary"],
+  "output_obligations": ["changed", "unchanged", "previous_checkpoint", "evidence_anchors"],
+  "biases": ["上一轮输出不可改写，只能说明本轮变化", "更新幅度应与新增证据强度相称", "风险信号发生不等于目标事件已经发生", "证据不足时保持判断并明确等待信号"],
+  "stop_conditions": ["改变与未改变的判断均有说明", "概率或区间变化能指回新增证据", "风险、路径与目标事件已分开", "仍不足以更新的事项已标为待验证"],
+  "write_boundary": "只读更新；不得写卡，也不得回改历史 checkpoint 输出"
+}

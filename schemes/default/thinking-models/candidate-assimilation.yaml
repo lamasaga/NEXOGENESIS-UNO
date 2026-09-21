@@ -1,0 +1,10 @@
+{
+  "id": "candidate-assimilation",
+  "version": "1.1.0",
+  "purpose": "为质料中的知识对象选择清晰、完整、可复用的承载方式，并明确新建、修订、跳过或延后的理由。",
+  "applicable_states": ["消化 Buffer", "候选与现有卡片部分重合", "写入被关系或范围校验拒绝"],
+  "required_capabilities": ["retrieve-candidates", "read-evidence-slice", "digest-semantic-patch"],
+  "biases": ["新建与丰富无默认优先级；比较对象身份、真实增量、独立复用价值和承载负担，必要时拆分或合并", "每个 Buffer 只在成功写入或显式 skip 后结算", "拒绝后排除失败候选并改选"],
+  "stop_conditions": ["贡献已安全写入或显式跳过", "没有合法候选且已记录延后", "达到读取或写入预算"],
+  "write_boundary": "一次只处理一个贡献层面，最多三个紧密相关原子操作"
+}

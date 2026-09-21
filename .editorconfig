@@ -1,0 +1,27 @@
+# 编码契约（EditorConfig）
+# 所有编辑器/工具据此处理文件编码，避免中文乱码反复出现。
+# 详见 docs/编码与脚本规范.md
+
+root = true
+
+# 默认：UTF-8 无 BOM，LF/CRLF 随平台，文件末尾换行
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Windows cmd/bat 脚本：铁律 = 纯 ASCII
+# （cmd 用系统代码页 GBK 解析 .cmd，中文会被误解码导致命令错乱）
+[*.{cmd,bat}]
+charset = ascii
+end_of_line = crlf
+
+# PowerShell 脚本：UTF-8 带 BOM（Windows PowerShell 5.1 需 BOM 才认 UTF-8）
+[*.ps1]
+charset = utf-8-bom
+end_of_line = crlf
+
+# 代码与文档：UTF-8
+[*.{js,ts,tsx,json,md,yaml,yml,py,html,css}]
+charset = utf-8

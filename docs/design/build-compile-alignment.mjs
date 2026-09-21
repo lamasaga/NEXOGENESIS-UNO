@@ -1,0 +1,16 @@
+import {readFileSync,writeFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {dirname,join} from 'node:path';
+const dir=dirname(fileURLToPath(import.meta.url));
+const data=JSON.parse(readFileSync(join(dir,'uno-compile-v1.details.json'),'utf8'));
+const diagram=readFileSync(join(dir,'uno-compile-v1.html'),'utf8');
+const safe=s=>JSON.stringify(s).replace(/</g,'\\u003c').replace(/\u2028/g,'\\u2028').replace(/\u2029/g,'\\u2029');
+const html=readFileSync(join(dir,'compile-alignment.template.html'),'utf8').replace('__DETAILS_JSON__',()=>safe(data)).replace('__DIAGRAM_JSON__',()=>safe(diagram));
+writeFileSync(join(dir,'uno-compile-alignment.html'),html);
+let md='# UNO 编译设计对齐 · 当前实现 v1\n\n核对日期：'+data.date+'\n\n'+data.scope+'\n\n'+data.units+'\n\n[打开交互对齐页](./uno-compile-alignment.html) · [打开独立流程图](./uno-compile-v1.html)\n\n## 固定编号\n\n| 环节 | 做什么 | 执行者 | 核心数量 |\n|---|---|---|---|\n';
+for(const s of data.steps)md+='| '+s.id+' | '+s.title+' | '+s.who+' | '+s.brief+' |\n';
+md+='\n正常路径：A → B → C → D → E → F → G → H → I → J → K → L。有下一批时，K 回到 E；恢复已有草稿或收据时，可回 I／J，不必重新调用模型。B 的失败材料保留，F／G／J 的失败停止本次执行，不会绕过校验继续落卡。\n';
+for(const s of data.steps)md+='\n## '+s.id+' · '+s.title+'\n\n**当前执行者：**'+s.who+'\n\n'+s.action+'\n\n**输入：**'+s.input+'\n\n**输出：**'+s.output+'\n\n### 具体量级与规则\n\n'+s.limits.map(v=>'- '+v).join('\n')+'\n\n### 能力边界\n\n'+s.boundary.map(v=>'- '+v).join('\n')+'\n\n**失败、暂停与恢复：**'+s.failure+'\n\n**修改时一起考虑：**'+s.impact+'\n\n**代码依据：**'+s.source.map(([p,n])=>'['+p.split('/').at(-1)+':'+n+'](D:/UESR/Desktop/NEXOGENESIS-UNO/'+p+':'+n+')').join('、')+'\n';
+md+='\n## 后续怎样对齐\n\n编号 A–L 永久保留；插入步骤使用 C1、C2，不重新编号。先记录“当前实现”，再记录“提议改变”，确认之后才更新新版本的实现快照。\n\n每次可以只说一句：“C：希望先按完整小节切分，特别长的小节再按长度切。”我们再一起确定参数、影响哪些下游环节，以及用什么样本判断收益。交互页支持按字母记录意见并复制汇总；它不会执行编译或修改运行配置。\n\n建议讨论次序：先 C／E／F 的上下文范围，再 G 的信息保留标准，最后 K 的总成本显示。这个次序只是讨论建议，尚未改变当前代码。\n';
+writeFileSync(join(dir,'UNO-编译设计对齐.md'),md);
+console.log(JSON.stringify({board:'uno-compile-alignment.html',spec:'UNO-编译设计对齐.md',steps:data.steps.length}));
