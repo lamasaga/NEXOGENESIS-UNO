@@ -66,7 +66,7 @@ export function assertTrustedRequest(req, trustedHosts = [], { csrfToken } = {})
 	const method = String(req.method ?? "GET").toUpperCase();
 	if (!SAFE_METHODS.has(method) && csrfToken !== void 0) {
 		const supplied = singleHeader(req.headers[CSRF_HEADER]);
-		if (!safeTokenEqual(supplied, csrfToken)) throw new HttpError(403, "missing or invalid local request token");
+		if (!safeTokenEqual(supplied, csrfToken)) throw Object.assign(new HttpError(403, "missing or invalid local request token"), {code:'LOCAL_TOKEN_INVALID'});
 		const contentType = singleHeader(req.headers["content-type"]);
 		const pathname = new URL(req.url ?? "/", "http://local").pathname;
 		const expected = pathname === "/api/inbox" ? /^multipart\/form-data(?:\s*;|$)/i

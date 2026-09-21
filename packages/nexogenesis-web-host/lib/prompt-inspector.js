@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { readSessionJob } from '../../nexogenesis-tools/lib/uno/state.js';
 import { getUnoRequestGovernance } from '../../nexogenesis-tools/lib/uno/request-context.js';
@@ -10,6 +10,8 @@ const activeCapture = new AsyncLocalStorage();
 const generation = randomUUID();
 const stores = new Map();
 const LIMIT = 60;
+const RECORD_BYTES = 8 * 1024 * 1024;
+const STORE_BYTES = 64 * 1024 * 1024;
 const clone = value => JSON.parse(JSON.stringify(value));
 const format = value => typeof value === 'string' ? value : JSON.stringify(value, null, 2);
 const finishStatus = kind => ['max-tokens', 'length'].includes(kind) ? 'truncated' : kind === 'error' ? 'failed' : kind === 'aborted' ? 'cancelled' : ['stop', 'tool-calls'].includes(kind) ? 'completed' : 'incomplete';
@@ -44,22 +46,41 @@ export class PromptStore {
   constructor(root) {
     this.dir = join(resolve(root), '.nexogenesis', 'prompt-inspector');
     this.warning = '';
+    this.inputs = new WeakMap();
+    this.pending = new Map();
     try { this.items = JSON.parse(readFileSync(join(this.dir, 'index.json'), 'utf8')).slice(0, LIMIT).map(item => item.status === 'running' && item.generation !== generation ? { ...item, status: 'interrupted' } : item); }
     catch (error) { this.items = []; if (error.code !== 'ENOENT') this.warning = '旧请求索引无法读取；新调用仍会继续。'; }
   }
   write(file, value) {
     mkdirSync(this.dir, { recursive: true });
-    writeFileSync(join(this.dir, file + '.tmp'), JSON.stringify(value), 'utf8');
+    const text=JSON.stringify(value);
+    if(Buffer.byteLength(text)>RECORD_BYTES)throw new Error('请求诊断记录超过单文件 8 MiB 上限');
+    writeFileSync(join(this.dir, file + '.tmp'), text, 'utf8');
     renameSync(join(this.dir, file + '.tmp'), join(this.dir, file));
   }
   save(record) {
+    const pending=this.pending.get(record.id);if(pending){clearTimeout(pending);this.pending.delete(record.id);}
     if (!this.items.some(item => item.id === record.id)) return; // Late completion must not resurrect an evicted call.
     record.chars = record.sections.reduce((n, part) => n + part.chars, 0);
     record.output_chars = record.output?.blocks.reduce((n,b)=>n+(b.type==='text'?b.text.length:b.arguments.length),0);
     const { input, sections, output, ...summary } = record;
     this.items = this.items.map(item => item.id === record.id ? summary : item);
-    this.write(record.id + '.json', { ...summary, input, ...(output ? {output} : {}) });
+    if(this.inputs.get(record)!==input){this.write(record.id+'.input',input);this.inputs.set(record,input);}
+    this.write(record.id + '.json', { ...summary, input_file:record.id+'.input', ...(output ? {output} : {}) });
     this.write('index.json', this.items);
+    let bytes=0;
+    for(const item of [...this.items]) {
+      if(!/^[a-f0-9-]{36}$/.test(item.id))continue;
+      const paths=[join(this.dir,item.id+'.json'),join(this.dir,item.id+'.input')];
+      for(const path of paths)if(existsSync(path))bytes+=statSync(path).size;
+      if(bytes>STORE_BYTES){this.items=this.items.filter(current=>current.id!==item.id);clearTimeout(this.pending.get(item.id));this.pending.delete(item.id);for(const path of paths)if(existsSync(path))unlinkSync(path);}
+    }
+    if(bytes>STORE_BYTES){this.warning='请求诊断目录达到 64 MiB 预算，较早记录已移出；正式账本与收据不受影响。';this.write('index.json',this.items);}
+  }
+  schedule(record) {
+    if(this.pending.has(record.id)||!this.items.some(item=>item.id===record.id))return;
+    const timer=setTimeout(()=>{this.pending.delete(record.id);try{this.save(record);}catch{this.warning='请求记录保存延迟或失败，模型执行未被中断。';}},0);
+    timer.unref();this.pending.set(record.id,timer);
   }
   begin(options, metadata) {
     const omissions = [];
@@ -70,7 +91,9 @@ export class PromptStore {
     this.items = [{ id: record.id }, ...this.items].slice(0, LIMIT);
     this.save(record);
     for (const item of removed) if (/^[a-f0-9-]{36}$/.test(item.id)) {
+      clearTimeout(this.pending.get(item.id));this.pending.delete(item.id);
       const file = join(this.dir, item.id + '.json'); if (existsSync(file)) unlinkSync(file);
+      const inputFile=join(this.dir,item.id+'.input');if(existsSync(inputFile))unlinkSync(inputFile);
     }
     return record;
   }
@@ -78,6 +101,7 @@ export class PromptStore {
   get(id) {
     if (!/^[a-f0-9-]{36}$/.test(id) || !this.items.some(item => item.id === id)) throw new HttpError(404, '该请求已不在最近 60 次记录中，请刷新列表。');
     const record = JSON.parse(readFileSync(join(this.dir, id + '.json'), 'utf8'));
+    if(record.input_file===id+'.input')record.input=JSON.parse(readFileSync(join(this.dir,record.input_file),'utf8'));
     // Old snapshots may predate nested native replay/thinking redaction. Sanitize
     // on read too, without rewriting the original diagnostic file.
     const omissions=[...(record.omissions??[])];record.input=visibleInput(record.input,omissions);record.omissions=[...new Set(omissions)];
@@ -155,7 +179,7 @@ export function captureVisibleOutput(output,chunk){
 
 export function registerPromptInspector(ctx, getRoot) {
   return ctx.on('llm/stream', (options, next) => (async function* () {
-    let capture, iterator, finished = false, lastOutputSave = 0;
+    let capture, iterator, finished = false, lastOutputSave = 0, lastOutputChars=0;
     try {
       let ownedRoot;
       try {
@@ -170,9 +194,10 @@ export function registerPromptInspector(ctx, getRoot) {
         const result = await activeCapture.run(capture, () => iterator.next());
         if (result.done) { finished = true; break; }
         const chunk = result.value;
-        if(capture && captureVisibleOutput(capture.record.output,chunk) && Date.now()-lastOutputSave>=2000){
+        if(capture && captureVisibleOutput(capture.record.output,chunk) && Date.now()-lastOutputSave>=2000 && capture.record.output.blocks.reduce((sum,block)=>sum+(block.text?.length??block.arguments?.length??0),0)-lastOutputChars>=4096){
           lastOutputSave=Date.now();
-          try{capture.store.save(capture.record);}catch{capture.store.warning='部分返回内容保存失败，模型执行未被中断。';}
+          lastOutputChars=capture.record.output.blocks.reduce((sum,block)=>sum+(block.text?.length??block.arguments?.length??0),0);
+          capture.store.schedule(capture.record);
         }
         if (capture && chunk.type === 'usage') capture.record.usage = clone(chunk.usage);
         if (capture && chunk.type === 'finish') {

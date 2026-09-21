@@ -3,8 +3,8 @@
  * Parses the multipart body by boundary, guards the filename against
  * path traversal, and saves each part under 00-Inbox/.
  */
-import { constants as fsConstants, createReadStream, createWriteStream, lstatSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { copyFile, unlink } from 'node:fs/promises';
+import { createReadStream, createWriteStream, lstatSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { link, unlink, stat } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -95,6 +95,7 @@ async function fileDigest(path){
 
 async function receiveMultipart(req,contentType,dir,declared){
 	const parts=[],writes=[];
+	const controller=new AbortController();
 	let received=0,files=0,limited=false;
 	const counter=new Transform({transform(chunk,_encoding,callback){
 		received+=chunk.length;
@@ -111,7 +112,7 @@ async function receiveMultipart(req,contentType,dir,declared){
 		const hash=createHash('sha256');
 		file.on('data',chunk=>{part.size+=chunk.length;hash.update(chunk);});
 		file.on('limit',()=>{part.error='单个文件超过 256 MiB，请拆分后导入';});
-		writes.push(pipeline(file,createWriteStream(part.temp,{flags:'wx'})).then(()=>{part.digest=hash.digest('hex');}).catch(error=>{part.error??=error.message;}));
+		writes.push(pipeline(file,createWriteStream(part.temp,{flags:'wx'}),{signal:controller.signal}).then(()=>{part.digest=hash.digest('hex');}).catch(error=>{part.error??=error.message;}));
 	});
 	parser.on('filesLimit',()=>{limited=true;});
 	parser.on('partsLimit',()=>{limited=true;});
@@ -122,7 +123,8 @@ async function receiveMultipart(req,contentType,dir,declared){
 		if(!parts.length)throw new HttpError(400,'没有可保存的文件');
 		return parts;
 	}catch(error){
-		await Promise.all(parts.map(part=>unlink(part.temp).catch(()=>{})));
+		controller.abort();await Promise.allSettled(writes);
+		await Promise.all(parts.map(part=>unlink(part.temp).catch(error=>{if(error.code!=='ENOENT')console.warn('INBOX_TEMP_CLEANUP_PENDING',error.code);})));
 		throw error;
 	}
 }
@@ -159,10 +161,11 @@ export async function handleInboxUpload(ctx, req, res, _trustedHosts, projectRoo
 					if(stat.isFile()&&!stat.isSymbolicLink()&&stat.size===part.size&&(await fileDigest(previousPath))===part.digest){items.push({index:part.index,name:part.filename,status:'existing',path:previous});continue;}
 					throw new Error(`同名文件内容不同，未覆盖原文件：${previous}；请改名后导入`);
 				}
-				await copyFile(part.temp,join(dir,safe),fsConstants.COPYFILE_EXCL);
+				if((await stat(part.temp)).size!==part.size || await fileDigest(part.temp)!==part.digest)throw new Error('暂存文件校验失败，未发布到 Inbox');
+				await link(part.temp,join(dir,safe));
 				existing.set(safe.toLocaleLowerCase('zh-CN'),safe);saved.push(safe);items.push({index:part.index,name:part.filename,status:'saved',path:safe});
 			}catch(error){items.push({index:part.index,name:part.filename,status:'failed',detail:error?.code==='EEXIST'?'目标文件刚刚被占用，请重试核对':String(error?.message??error)});}
-			finally{await unlink(part.temp).catch(()=>{});}
+			finally{await unlink(part.temp).catch(error=>{if(error.code!=='ENOENT')console.warn('INBOX_TEMP_CLEANUP_PENDING',error.code);});}
 		}
 		json(res,200,{saved,items});
 	}finally{

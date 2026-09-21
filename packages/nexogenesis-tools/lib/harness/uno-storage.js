@@ -1,5 +1,5 @@
 /** Internal implementation of HarnessGateway's UNO transactions; never called by Web handlers directly. */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { stringify as yaml } from "yaml";
@@ -29,6 +29,18 @@ function put(path, content) {
 }
 export function unoMarkdown(meta, body) { return "---\n" + yaml(meta, { lineWidth: 0, doubleQuotedAsJSON: true }).trimEnd() + "\n---\n\n" + body; }
 const receiptRef = key => ".nexogenesis/uno-receipts/" + sha(key) + ".json";
+const processIdentity = randomUUID();
+export function inspectUnoLock(root) {
+  const lock = unoPath(root, '.nexogenesis/uno-write-lock');
+  if (!existsSync(lock)) return { status: 'unlocked' };
+  let owner;
+  try { owner = JSON.parse(readFileSync(join(lock, 'owner.json'), 'utf8')); }
+  catch { return { status: 'needs_inspection', code: 'LOCK_OWNER_UNREADABLE' }; }
+  if (!Number.isInteger(owner.pid) || owner.pid <= 0) return { status: 'needs_inspection', code: 'LOCK_OWNER_INVALID' };
+  if (owner.pid === process.pid && owner.process_identity && owner.process_identity !== processIdentity) return { status: 'stale', owner };
+  try { process.kill(owner.pid, 0); return { status: 'busy', owner }; }
+  catch (error) { return { status: error.code === 'ESRCH' ? 'stale' : 'needs_inspection', owner }; }
+}
 export function readUnoReceipt(root, key) {
   const path = unoPath(root, receiptRef(key));
   return existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
@@ -53,7 +65,7 @@ function recover(root) {
   }
   invalidateKnowledgeSnapshot(root);
 }
-export function transaction(root, key, input, plan) {
+export function transaction(root, key, input, plan, { checkpoint = () => {} } = {}) {
   if (typeof key !== "string" || !key || key.length > 240) throw new Error("写入批次标识无效。");
   const digest = sha(JSON.stringify(input)), previous = readUnoReceipt(root, key);
   if (previous) {
@@ -63,16 +75,16 @@ export function transaction(root, key, input, plan) {
   const lock = unoPath(root, ".nexogenesis/uno-write-lock");
   mkdirSync(dirname(lock), { recursive: true });
   if (existsSync(lock)) {
+    const inspection = inspectUnoLock(root);
+    if (inspection.status !== 'stale') throw Object.assign(new Error(inspection.status === 'busy' ? '知识写入正在进行。' : '知识写入锁需要检查，未执行新写入。'), { code: inspection.status === 'busy' ? 'WRITE_LOCK_BUSY' : 'WRITE_LOCK_RECOVERY_REQUIRED', details: inspection });
     const ownerFile = join(lock, "owner.json");
-    if (!existsSync(ownerFile)) throw new Error("知识写入锁需要检查，未执行新写入。");
-    const owner = JSON.parse(readFileSync(ownerFile, "utf8"));
-    let alive = true;
-    try { process.kill(owner.pid, 0); } catch (e) { if (e.code === "ESRCH") alive = false; }
-    if (alive) throw new Error("知识写入正在进行。");
     unlinkSync(ownerFile); rmdirSync(lock);
   }
-  mkdirSync(lock); writeFileSync(join(lock, "owner.json"), JSON.stringify({ pid: process.pid }));
+  try { mkdirSync(lock); } catch (error) { throw Object.assign(new Error('知识写入锁未取得。'), {code:'WRITE_LOCK_BUSY',cause:error}); }
+  let committed = null;
   try {
+    checkpoint('owner');
+    writeFileSync(join(lock, "owner.json"), JSON.stringify({ pid: process.pid, process_identity: processIdentity, process_started_at: new Date(Date.now()-process.uptime()*1000).toISOString(), transaction_id: sha(key), created_at: new Date().toISOString() }));
     recover(root);
     invalidateKnowledgeSnapshot(root);
     const { writes, result } = plan();
@@ -93,11 +105,23 @@ export function transaction(root, key, input, plan) {
         else put(path, Buffer.from(row.after, "base64"));
       }
       put(unoPath(root, receiptRef(key)), JSON.stringify(receipt));
-    } catch (error) { recover(root); throw error; }
-    unlinkSync(txPath);
+    } catch (error) {
+      const saved=readUnoReceipt(root,key);
+      if(saved?.input_hash===digest){committed=saved;saved.cleanup_pending=true;invalidateKnowledgeSnapshot(root);return saved;}
+      recover(root);throw error;
+    }
+    committed = receipt;
+    try { checkpoint('transaction_cleanup'); unlinkSync(txPath); }
+    catch { receipt.cleanup_pending = true; }
     invalidateKnowledgeSnapshot(root);
     return receipt;
-  } finally { unlinkSync(join(lock, "owner.json")); rmdirSync(lock); }
+  } finally {
+    try { checkpoint('lock_cleanup'); if (existsSync(join(lock, 'owner.json'))) unlinkSync(join(lock, "owner.json")); rmdirSync(lock); }
+    catch (error) {
+      if (committed) committed.cleanup_pending = true;
+      else console.warn('UNO_WRITE_LOCK_CLEANUP_PENDING', error.code ?? 'CLEANUP_FAILED');
+    }
+  }
 }
 export function expect(root, revisions) {
   for (const [ref, value] of Object.entries(revisions)) if (unoRevision(root, ref) !== value) throw Object.assign(new Error("文件版本已变化，请读回当前对象后局部修订，无需重新生成整批：" + ref), {code:'REVISION_CONFLICT',details:{ref}});

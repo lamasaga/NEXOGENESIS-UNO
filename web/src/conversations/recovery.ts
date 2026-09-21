@@ -1,14 +1,14 @@
 import type { UnoStartInput } from '../api/client';
+import { readStorage, writeStorage } from './safeStorage';
 
 type View = {kind:'conversation';id:string}|{kind:'start';id:string};
 export type PendingStart = {input:UnoStartInput;id:string};
 const key=(library:string,part:string)=>`uno.recovery.v1.${library}.${part}`;
 function read<T>(library:string,part:string):T|null {
-  try{return JSON.parse(sessionStorage.getItem(key(library,part))??'null');}catch{return null;}
+  try{return JSON.parse(readStorage('sessionStorage',key(library,part))??'null');}catch{return null;}
 }
 function write(library:string,part:string,value:unknown){
-  if(typeof sessionStorage==='undefined')return;
-  sessionStorage.setItem(key(library,part),JSON.stringify(value));
+  writeStorage('sessionStorage',key(library,part),JSON.stringify(value));
 }
 export const savedView=(library:string)=>read<View>(library,'view');
 export const pendingStart=(library:string)=>read<PendingStart>(library,'start');

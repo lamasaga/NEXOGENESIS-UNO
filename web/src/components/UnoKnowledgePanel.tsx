@@ -349,10 +349,10 @@ export function UnoKnowledgePanel({mode,jobId,initialNotes='',available=true,onC
             <fieldset><legend>选择材料 · 已选 {sources.length}</legend><p className="uno-work__muted">图书按章节整理，短文章保留整篇；长单元按段落切分。每个单元完整提交一次生成知识卡，检查后只修改问题卡。</p>
               {!!preparation.archived_sources?.length&&<p className="uno-work__muted">已识别 {preparation.archived_sources.length} 份与完成归档逐字节一致的 Inbox 副本，不再列为待编译材料；不可变原件仍保留在归档目录。</p>}
               {!preparation.sources.length&&<p>Inbox 当前没有待编译材料，请先上传原始文件。历史整理材料保留在原任务中，不作为新编译入口。</p>}
-              <button type="button" onClick={()=>setSources(preparation.sources.map(s=>s.path.startsWith("00-Inbox/")?s.path:"00-Inbox/"+s.path))}>全选 Inbox 材料</button><button type="button" onClick={()=>setSources([])}>清空选择</button><div className="uno-work__materials">{preparation.sources.map(source=>({source,path:source.path,ref:source.path.startsWith("00-Inbox/")?source.path:"00-Inbox/"+source.path})).map(item=>{
+              <button type="button" onClick={()=>setSources(preparation.sources.filter(s=>s.compile_available!==false).map(s=>s.path.startsWith("00-Inbox/")?s.path:"00-Inbox/"+s.path))}>全选可编译材料</button><button type="button" onClick={()=>setSources([])}>清空选择</button><div className="uno-work__materials">{preparation.sources.map(source=>({source,path:source.path,ref:source.path.startsWith("00-Inbox/")?source.path:"00-Inbox/"+source.path})).map(item=>{
                 const ref=item.ref;
-                return <label key={ref}><input type="checkbox" checked={sources.includes(ref)} disabled={busy||!connected}
-                  onChange={e=>setSources(current=>e.target.checked?[...current,ref]:current.filter(s=>s!==ref))}/><span>{item.path}{inboxSourceProgress(item.source)&&<small> · {inboxSourceProgress(item.source)}</small>}</span></label>;
+                return <label key={ref}><input type="checkbox" checked={sources.includes(ref)} disabled={busy||!connected||item.source.compile_available===false}
+                  onChange={e=>setSources(current=>e.target.checked?[...current,ref]:current.filter(s=>s!==ref))}/><span>{item.path}{inboxSourceProgress(item.source)&&<small> · {inboxSourceProgress(item.source)}</small>}{item.source.compile_unavailable_reason&&<small> · {item.source.compile_unavailable_reason}</small>}</span></label>;
               })}</div>
             </fieldset>
             <fieldset><legend>编译倾向 · 快捷提示词</legend><div className="uno-work__actions">{COMPILE_HINTS.map(h=><button type="button" key={h.id} onClick={()=>setNotes(current=>current?current+'\n'+h.prompt:h.prompt)}>{h.label}</button>)}</div></fieldset>

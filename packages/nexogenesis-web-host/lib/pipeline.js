@@ -173,7 +173,9 @@ export async function handleEventsGet(ctx, req, res, _trustedHosts) {
 	const url = new URL(req.url ?? "/", "http://x");
 	const conversationId = url.searchParams.get("conversation_id") ?? "";
 	if (conversationId !== "") assertOwnedConversation(conversationId);
-	const afterRaw = Number(url.searchParams.get("after"));
+	const cursor=String(req.headers?.['last-event-id']??'').split(':');
+	const afterText=cursor.length===2?cursor[1]:url.searchParams.get('after');
+	const afterRaw=afterText===null?NaN:Number(afterText);
 	const after = Number.isFinite(afterRaw) && afterRaw >= 0 ? afterRaw : null;
 	res.writeHead(200, {
 		"content-type": "text/event-stream; charset=utf-8",
@@ -181,9 +183,9 @@ export async function handleEventsGet(ctx, req, res, _trustedHosts) {
 		connection: "keep-alive"
 	});
 	res.write(": connected\n\n");
-	const unsub = conversationId === "" ? () => {} : subscribeGraphEvents(conversationId, res, { after });
+	const unsub = conversationId === "" ? () => {} : subscribeGraphEvents(conversationId, res, { after, epoch:cursor.length===2?cursor[0]:null });
 	const timer = setInterval(() => {
-		if (!res.writableEnded) res.write(": keep-alive\n\n");
+		if (!res.writableEnded && !res.destroyed && !res.writableNeedDrain) res.write(": keep-alive\n\n");
 	}, 25000);
 	res.on("close", () => {
 		clearInterval(timer);

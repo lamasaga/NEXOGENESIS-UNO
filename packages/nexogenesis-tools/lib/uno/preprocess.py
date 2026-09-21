@@ -83,28 +83,53 @@ PAGE=re.compile(r'^\s*(?:第\s*\d+\s*页(?:\s*[共/].*页)?|[-—]\s*\d+\s*[-—
 # Explicit source locators in Markdown exports; ordinary comments are content.
 SOURCE_PAGE=re.compile(r'^<!--\s*(?:PDF\s*)?物理页\s*(\d+)(?:\s*[;；]\s*书页\s*(\d+))?\s*-->$')
 
+class ZipBudget:
+    def __init__(self, archive):
+        self.archive=archive; self.read_bytes=0
+        infos=archive.infolist()
+        if len(infos)>20000 or sum(i.file_size for i in infos)>200*1024*1024:
+            raise ValueError('压缩包解压清单过大')
+        if len({i.filename for i in infos})!=len(infos): raise ValueError('压缩包包含重复 ZIP 路径')
+    def read(self, name, maximum=30*1024*1024):
+        info=self.archive.getinfo(name) if isinstance(name,str) else name
+        if info.file_size>maximum or self.read_bytes+info.file_size>200*1024*1024:
+            raise ValueError('资源解压读取预算超限：'+info.filename)
+        self.read_bytes+=info.file_size
+        with self.archive.open(info) as stream:
+            data=stream.read(min(maximum,info.file_size)+1)
+        if len(data)!=info.file_size: raise ValueError('ZIP 资源实际长度与清单不一致')
+        return data
+
 def prepare(path, modern=False, root=None, material_kind=None, unit_char_limit=60000):
     unit_char_limit=int(unit_char_limit)
     if unit_char_limit < 12000 or unit_char_limit > 90000: raise ValueError('原文单元字符上限须为 12000–90000')
     path=Path(path)
     if path.stat().st_size>50*1024*1024: raise ValueError('单文件超过 50 MiB')
     raw=path.read_bytes()
-    warnings=[]; changes=Counter(); pages=[]; toc=[]; assets=[]; asset_size=0; image_hashes=set(); external_images=[]; source_metadata=''; incomplete=False; epub_documents={}; book_title=''
+    warnings=[]; changes=Counter(); pages=[]; toc=[]; assets=[]; asset_size=0; image_hashes={}; external_images=[]; source_metadata=''; incomplete=False; epub_documents={}; book_title=''
     def asset(data,name,locator,caption=''):
         nonlocal asset_size
         digest=hashlib.sha256(data).hexdigest()
         if digest in image_hashes:
-            for a in assets:
-                if hashlib.sha256(base64.b64decode(a['data'])).hexdigest()==digest: a['locator']+='；'+locator
-            return
+            a=image_hashes[digest]
+            if locator not in a['locator'].split('；'): a['locator']+='；'+locator
+            return a
         if len(data)>20*1024*1024 or asset_size+len(data)>20*1024*1024 or len(assets)>=64:
             warnings.append('部分图片未单独提取，可从保全的原件查看。'); return
-        image_hashes.add(digest); asset_size+=len(data)
-        assets.append({'data':base64.b64encode(data).decode('ascii'),'name':name,'mime':mimetypes.guess_type(name)[0] or 'application/octet-stream','locator':locator,'caption':caption})
+        asset_size+=len(data)
+        a={'data':base64.b64encode(data).decode('ascii'),'name':name,'mime':mimetypes.guess_type(name)[0] or 'application/octet-stream','locator':locator,'caption':caption}
+        image_hashes[digest]=a; assets.append(a); return a
+    def can_extract(size=0):
+        if len(assets)>=64 or asset_size+size>20*1024*1024 or asset_size>=20*1024*1024:
+            warning='部分图片未单独提取，可从保全的原件查看。'
+            if warning not in warnings: warnings.append(warning)
+            return False
+        return True
     suffix=path.suffix.lower()
     if suffix=='.pdf':
         import fitz
         with fitz.open(path) as doc:
+            image_refs={}
             toc=[(title,max(1,p)) for level,title,p in doc.get_toc() if level==1]
             for i,page in enumerate(doc):
                 text=page.get_text()
@@ -113,11 +138,18 @@ def prepare(path, modern=False, root=None, material_kind=None, unit_char_limit=6
                 if modern:
                     for image in page.get_images(full=True):
                         try:
-                            value=doc.extract_image(image[0]); asset(value['image'],f"image-{image[0]}.{value['ext']}",f'物理页 {i+1}')
+                            xref=image[0]; locator=f'物理页 {i+1}'
+                            if xref in image_refs:
+                                a=image_refs[xref]
+                                if a and locator not in a['locator'].split('；'): a['locator']+='；'+locator
+                                continue
+                            if not can_extract(): continue
+                            value=doc.extract_image(xref); image_refs[xref]=asset(value['image'],f"image-{xref}.{value['ext']}",locator)
                         except Exception: warnings.append(f'物理页 {i+1} 图片提取失败，可查看 PDF 原件。')
         warnings.append('PDF 图像、OCR 与复杂表格未自动核验；保留原件。')
     elif suffix=='.epub':
         with zipfile.ZipFile(path) as z:
+            budget=ZipBudget(z)
             infos=z.infolist()
             if len(infos)>20000 or sum(i.file_size for i in infos)>200*1024*1024: raise ValueError('EPUB 解压清单过大')
             names=[i.filename for i in infos]
@@ -125,7 +157,7 @@ def prepare(path, modern=False, root=None, material_kind=None, unit_char_limit=6
             def read_member(name, maximum=30*1024*1024):
                 info=z.getinfo(name)
                 if info.file_size>maximum: raise ValueError('EPUB 资源解压后过大：'+name)
-                return z.read(info)
+                return budget.read(info,maximum)
             container=ElementTree.fromstring(read_member('META-INF/container.xml',1024*1024))
             rootfile=next((node for node in container.iter() if node.tag.rsplit('}',1)[-1]=='rootfile' and node.get('full-path')),None)
             if rootfile is None: raise ValueError('EPUB container 缺少 package 路径')
@@ -179,19 +211,21 @@ def prepare(path, modern=False, root=None, material_kind=None, unit_char_limit=6
                 for item in manifest.values():
                     if not item.get('media-type','').startswith('image/'): continue
                     try:
-                        member=epub_member(package_base,item.get('href','')); asset(read_member(member,20*1024*1024),posixpath.basename(member),'EPUB '+member)
+                        member=epub_member(package_base,item.get('href',''))
+                        if can_extract(z.getinfo(member).file_size): asset(read_member(member,20*1024*1024),posixpath.basename(member),'EPUB '+member)
                     except (KeyError,ValueError) as error: warnings.append('EPUB 图片未单独提取：'+str(error))
             changes['按 EPUB spine 顺序保留正文（含 linear=no 附属材料）']=1
             warnings.append('EPUB 图像与公式版式未自动核验；保留原件和可提取图片。')
     elif suffix=='.docx':
         with zipfile.ZipFile(path) as z:
+            budget=ZipBudget(z)
             member=z.getinfo('word/document.xml')
             if member.file_size>30*1024*1024: raise ValueError('DOCX 正文解压后超过 30 MiB')
-            tree=ElementTree.fromstring(z.read(member))
+            tree=ElementTree.fromstring(budget.read(member))
             if modern:
                 for info in z.infolist():
-                    if info.filename.startswith('word/media/') and info.file_size<=20*1024*1024:
-                        asset(z.read(info),Path(info.filename).name,info.filename)
+                    if info.filename.startswith('word/media/') and can_extract(info.file_size):
+                        asset(budget.read(info,20*1024*1024),Path(info.filename).name,info.filename)
         ns='{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
         paragraphs=[]
         for p in tree.iter(ns+'p'):

@@ -8,7 +8,7 @@
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 
 const DEFAULT_META = { projects: {}, conversations: {}, deleted: {} };
 
@@ -17,6 +17,22 @@ let cacheMtime = 0;
 let cacheSize = -1;
 let cachePath = "";
 let activeMetaInstanceId = "legacy";
+let diskDigest;
+let readFailure = null;
+const digest = text => createHash('sha256').update(text).digest('hex');
+const record = value => value && typeof value === 'object' && !Array.isArray(value);
+function validateMeta(value) {
+	if (!record(value) || !['projects','conversations','deleted'].every(key => record(value[key]))
+		|| !Object.values(value.projects).every(p => record(p) && typeof p.id === 'string' && typeof p.name === 'string' && Array.isArray(p.conversations))
+		|| !Object.values(value.conversations).every(record) || !Object.values(value.deleted).every(v => typeof v === 'boolean')) {
+		throw Object.assign(new Error('项目元数据结构无效，原文件已保留。'), { code: 'META_INVALID_SCHEMA' });
+	}
+	return value;
+}
+function metaError(error) {
+	const code = error.code?.startsWith('META_') ? error.code : error instanceof SyntaxError ? 'META_INVALID_JSON' : 'META_READ_FAILED';
+	return Object.assign(new Error('无法安全读取项目元数据，请重试或从已验证备份恢复；不会初始化覆盖原文件。'), { code, cause: error });
+}
 
 function metaPath() {
 	const suffix = activeMetaInstanceId === "legacy" ? "" : `.${activeMetaInstanceId}`;
@@ -32,6 +48,8 @@ export function setMetaInstanceId(instanceId) {
 	cacheMtime = 0;
 	cacheSize = -1;
 	cachePath = "";
+	diskDigest = undefined;
+	readFailure = null;
 }
 
 /**
@@ -47,15 +65,23 @@ export function readMeta() {
 		cacheMtime = 0;
 		cacheSize = -1;
 		cachePath = path;
+		diskDigest = undefined;
+		readFailure = null;
 	}
 	try {
 		const stat = statSync(path);
-		if (cache !== null && stat.mtimeMs === cacheMtime && stat.size === cacheSize) return cache;
-		cache = JSON.parse(readFileSync(path, "utf8"));
+		if (!readFailure && cache !== null && stat.mtimeMs === cacheMtime && stat.size === cacheSize) return cache;
+		const text = readFileSync(path, 'utf8');
+		cache = validateMeta(JSON.parse(text));
+		diskDigest = digest(text);
+		readFailure = null;
 		cacheMtime = stat.mtimeMs;
 		cacheSize = stat.size;
-	} catch {
+	} catch (error) {
+		if (error.code !== 'ENOENT') { readFailure = metaError(error); throw readFailure; }
 		cache = structuredClone(DEFAULT_META);
+		diskDigest = null;
+		readFailure = null;
 		cacheMtime = 0;
 		cacheSize = -1;
 	}
@@ -65,12 +91,22 @@ export function readMeta() {
 /** Persist the cached metadata document. */
 export function writeMeta() {
 	const path = metaPath();
-	cachePath = path;
+	if (cachePath !== path || diskDigest === undefined) readMeta();
+	if (readFailure) throw readFailure;
+	const value = validateMeta(cache ?? readMeta());
+	let original = null;
+	try { original = readFileSync(path, 'utf8'); validateMeta(JSON.parse(original)); }
+	catch (error) { if (error.code !== 'ENOENT') { readFailure = metaError(error); throw readFailure; } }
+	if ((original === null ? null : digest(original)) !== diskDigest) {
+		cache = null;
+		throw Object.assign(new Error('项目元数据已在其他位置改变，请重新读取后操作。'), { code: 'META_CONFLICT' });
+	}
 	mkdirSync(dirname(path), { recursive: true });
-	const value = cache ?? readMeta();
 	const staging = `${path}.staging-${process.pid}-${Date.now()}`;
-	writeFileSync(staging, JSON.stringify(value, null, 2), "utf8");
+	const serialized = JSON.stringify(value, null, 2);
+	writeFileSync(staging, serialized, "utf8");
 	renameSync(staging, path);
+	diskDigest = digest(serialized);
 	const stat = statSync(path);
 	cacheMtime = stat.mtimeMs;
 	cacheSize = stat.size;

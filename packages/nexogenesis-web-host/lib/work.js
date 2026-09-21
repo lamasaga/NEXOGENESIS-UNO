@@ -1,4 +1,5 @@
 import { isRetiredIngestion, assertCurrentKnowledgeExecution, RETIRED_INGESTION_MESSAGE } from './knowledge-task-access.js';
+import { activeInstanceIdentity, instanceSynchronizationReady } from '../../nexogenesis-tools/lib/instances/registry.js';
 import { suspendInbox, heldPauseMessages } from "./resume-inbox.js";
 import { randomUUID } from "node:crypto";
 import { isQuickThinkingRunning, cancelQuickThinking } from "./quick-thinking.js";
@@ -25,8 +26,11 @@ export const instanceMutationsInFlight = () => pendingMutations;
 
 /** The tool root is still shared: never switch it while an admitted command is starting or resuming work. */
 export async function withInstanceMutation(req, action) {
+	const requested = req.headers?.['x-nexogenesis-instance'];
+	if (requested && activeInstanceIdentity() && requested !== activeInstanceIdentity()) throw Object.assign(new HttpError(409, '当前知识库已在其他页面切换，请重新核对当前库。'), {code:'INSTANCE_CHANGED'});
 	if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return action();
 	const isSwitch = /\/switch\/?$/.test(new URL(req.url ?? "/", "http://local").pathname);
+	if (!isSwitch && !instanceSynchronizationReady()) throw Object.assign(new HttpError(409,'实例切换已保存，但运行组件未全部同步；请重新切换或重启服务后核对。'),{code:'INSTANCE_SYNC_FAILED'});
 	if (switching || (isSwitch && (pendingMutations > 0 || settlingSessions.size > 0))) throw new HttpError(409, "有任务指令正在处理，请稍后切换或重试。");
 	if (isSwitch) switching = true;
 	pendingMutations++;

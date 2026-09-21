@@ -41,11 +41,16 @@ export function readGuide(name='overview') {
 export function preprocessSource(root,source,signal,modern=false,materialKind,unitCharLimit=60000) {
   if(!source.startsWith('00-Inbox/'))throw new Error('只能预处理本轮选定的 Inbox 材料');
   return new Promise((resolveResult,reject)=>{
-    const child=spawn(process.env.UNO_PYTHON||'python',['-B','-X','utf8',fileURLToPath(new URL('./preprocess.py',import.meta.url))],{windowsHide:true,stdio:['pipe','pipe','pipe'],signal});
-    const out=[],err=[];let size=0;
-    child.stdout.on('data',data=>{size+=data.length;if(size>40*1024*1024){child.kill();reject(new Error('预处理输出超过 40 MiB'));}else out.push(data);});
-    child.stderr.on('data',data=>err.push(data));child.on('error',reject);
-    child.on('close',code=>{try{if(code!==0)throw new Error(Buffer.concat(err).toString('utf8')||'Python 预处理失败');resolveResult(JSON.parse(Buffer.concat(out).toString('utf8')));}catch(e){reject(e);}});
+    signal?.throwIfAborted();
+    const child=spawn(process.env.UNO_PYTHON||'python',['-B','-X','utf8',fileURLToPath(new URL('./preprocess.py',import.meta.url))],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+    const out=[];let err=Buffer.alloc(0),size=0,failure=null,forceTimer;
+    const stop=reason=>{if(failure)return;failure=reason;child.kill();forceTimer=setTimeout(()=>child.kill('SIGKILL'),2000);forceTimer.unref();};
+    const aborted=()=>stop(signal.reason??new Error('预处理已取消'));
+    signal?.addEventListener('abort',aborted,{once:true});
+    const timer=setTimeout(()=>stop(Object.assign(new Error('预处理超过 120 秒，已请求终止；原件保留。'),{code:'PREPROCESS_TIMEOUT'})),120000);timer.unref();
+    child.stdout.on('data',data=>{size+=data.length;if(size>40*1024*1024)stop(new Error('预处理输出超过 40 MiB'));else if(!failure)out.push(data);});
+    child.stderr.on('data',data=>{err=Buffer.concat([err,data]).subarray(-65536);});child.on('error',error=>{failure??=error;});
+    child.on('close',code=>{clearTimeout(timer);clearTimeout(forceTimer);signal?.removeEventListener('abort',aborted);try{if(failure)throw failure;if(code!==0)throw new Error(err.toString('utf8')||'Python 预处理失败');resolveResult(JSON.parse(Buffer.concat(out).toString('utf8')));}catch(e){reject(e);}});
     child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({path:unoPath(root,source),root:resolve(root),modern,material_kind:materialKind,unit_char_limit:unitCharLimit}));
   });
 }
@@ -70,20 +75,38 @@ function rawRefs(root) {
   const modern=existsSync(newDir)?readdirSync(newDir).filter(n=>n.endsWith('.md')).map(n=>'05-Buffer/_index/'+n):[];
   return [...modern,...(existsSync(dir)?readdirSync(dir,{withFileTypes:true}).filter(d=>d.isDirectory()&&!d.isSymbolicLink()).flatMap(d=>readdirSync(unoPath(root,base+'/'+d.name)).filter(f=>/^(chapter-|u\d).*\.md$/.test(f)).map(f=>base+'/'+d.name+'/'+f)):[])];
 }
+const persistenceAttempts=new WeakMap();
+function persistIndex(root,value) {
+  const file=unoPath(root,'.nexogenesis/uno-sparse-index.json');
+  persistenceAttempts.set(value,Date.now());
+  try {mkdirSync(dirname(file),{recursive:true});const {cache_warning,...saved}=value;writeFileSync(file+'.tmp',JSON.stringify(saved));renameSync(file+'.tmp',file);delete value.cache_warning;}
+  catch {value.cache_warning='SPARSE_INDEX_PERSIST_FAILED';}
+}
 function index(root) {
   // Repeated searches inspect file stamps, not every Buffer body. Markdown remains authoritative.
   const cards=loadCards(root),refs=rawRefs(root),signature=sha(JSON.stringify([...refs.map(ref=>materialStamp(root,ref)),...[...cards.values()].map(c=>{const ref=unoCardRef(root,c),s=statSync(unoPath(root,ref));return [ref,s.mtimeMs,s.ctimeMs,s.size];})].sort((a,b)=>a[0].localeCompare(b[0]))));
-  const cached=cache.get(resolve(root));if(cached?.signature===signature)return cached;
+  const cached=cache.get(resolve(root));if(cached?.signature===signature){if(cached.cache_warning&&Date.now()-(persistenceAttempts.get(cached)??0)>=30000)persistIndex(root,cached);return cached;}
   const file=unoPath(root,'.nexogenesis/uno-sparse-index.json');
   if(existsSync(file)){try{const saved=JSON.parse(readFileSync(file,'utf8'));if(saved.version===6&&saved.signature===signature){cache.set(resolve(root),saved);return saved;}}catch{/* Rebuild disposable index. */}}
   const docs=[];
+  const targets=cards.relationTargets??loadCards(root,{includeInactive:true});
   for(const [id,c] of cards){if(c.meta.type==='domain'||c.meta.lifecycle==='superseded'||c.meta.lifecycle==='archived')continue;
-    docs.push({kind:'card',id,title:c.meta.title??id,type:displayType(c.meta),summary:c.meta.summary??c.body.slice(0,240),domains:c.meta.domains??[],quality:c.meta.quality_notes??[],text:c.body,ref:unoCardRef(root,c),relations:(c.meta.relations??[]).map(r=>({...r,target:resolveCardTarget(root,r.target)??r.target})).filter(r=>r.target!==id)});}
+    docs.push({kind:'card',id,title:c.meta.title??id,type:displayType(c.meta),summary:c.meta.summary??c.body.slice(0,240),domains:c.meta.domains??[],quality:c.meta.quality_notes??[],text:c.body,ref:unoCardRef(root,c),relations:(c.meta.relations??[]).map(r=>({...r,target:resolveCardTarget(root,r.target,targets)??r.target})).filter(r=>r.target!==id)});}
   for(const ref of refs){const unit=readUnoUnit(root,ref),sequence=ref.startsWith('05-Buffer/_index/')?Array.from(unit.body):unit.body;for(let offset=0;offset<sequence.length;offset+=1040){docs.push({kind:'buffer',id:ref+':'+offset,ref,offset,title:unit.meta.title??ref,locator:unit.meta.locator,attention:unit.meta.attention??'standard',source:unit.meta.source,text:Array.isArray(sequence)?sequence.slice(offset,offset+1200).join(''):sequence.slice(offset,offset+1200)});if(offset+1200>=sequence.length)break;}}
-  const df={};let total=0;
-  for(const doc of docs){const words=tokens([doc.title,doc.title,doc.summary,doc.type,...(doc.domains??[]),...(doc.relations??[]).map(r=>r.note),doc.text].join(' '));doc.tf={};for(const w of words)doc.tf[w]=(doc.tf[w]??0)+1;doc.length=words.length;total+=words.length;for(const w of Object.keys(doc.tf))df[w]=(df[w]??0)+1;}
-  const result={version:6,signature,docs,df,average:total/Math.max(1,docs.length)};mkdirSync(dirname(file),{recursive:true});writeFileSync(file+'.tmp',JSON.stringify(result));renameSync(file+'.tmp',file);cache.set(resolve(root),result);return result;
+  const df={};let total=0,tokenized=0;
+  const previous=new Map((cached?.docs??[]).map(doc=>[doc.kind+':'+doc.id,doc]));
+  for(const doc of docs){
+    const text=[doc.title,doc.title,doc.summary,doc.type,...(doc.domains??[]),...(doc.relations??[]).map(r=>r.note),doc.text].join(' '),stamp=sha(text),old=previous.get(doc.kind+':'+doc.id);
+    if(old?.token_stamp===stamp){doc.tf=old.tf;doc.length=old.length;}
+    else {const words=tokens(text);doc.tf={};for(const w of words)doc.tf[w]=(doc.tf[w]??0)+1;doc.length=words.length;tokenized++;}
+    doc.token_stamp=stamp;total+=doc.length;for(const w of Object.keys(doc.tf))df[w]=(df[w]??0)+1;
+  }
+  const result={version:6,signature,docs,df,average:total/Math.max(1,docs.length),tokenized_documents:tokenized};
+  cache.set(resolve(root),result);while(cache.size>8)cache.delete(cache.keys().next().value);
+  persistIndex(root,result);
+  return result;
 }
+export function sparseIndexStats(root) {const value=cache.get(resolve(root));return {documents:value?.docs.length??0,tokenized_documents:value?.tokenized_documents??0,cache_warning:value?.cache_warning??null};}
 export function searchKnowledge(root,{query='',kind='all',type,domain,relation,neighbor,limit=8,offset=0}={}) {
   limit=Math.max(1,Math.min(30,Number(limit)||8));offset=Math.max(0,Number(offset)||0);const data=index(root),words=[...new Set(tokens(query))];
   const domainIds=new Set(domain?[domain]:[]),domains=domain?listDomainsV2(root):[];
@@ -98,7 +121,7 @@ export function searchKnowledge(root,{query='',kind='all',type,domain,relation,n
   const selected=[],overflow=[],counts=new Map();
   for(const item of ranked){const key=item.d.kind==='buffer'?item.d.source:item.d.id;const n=counts.get(key)??0;counts.set(key,n+1);(n<2?selected:overflow).push(item);}
   ranked.splice(0,ranked.length,...selected,...overflow);
-  const result = {total:ranked.length,offset,next_offset:offset+limit<ranked.length?offset+limit:null,items:ranked.slice(offset,offset+limit).map(({d,score})=>{
+  const result = {...(data.cache_warning?{cache_warning:data.cache_warning}:{}),total:ranked.length,offset,next_offset:offset+limit<ranked.length?offset+limit:null,items:ranked.slice(offset,offset+limit).map(({d,score})=>{
     const {text}=d,clip=(v,n)=>String(v??'').slice(0,n),matchingLinks=links.filter(l=>l.from===d.id||l.to===d.id);
     // Search is a locator, not another full metadata/card read. Preserve exact IDs and refs.
     return {kind:d.kind,id:d.id,ref:d.ref,title:clip(d.title,160),summary:clip(d.summary,400),metadata_truncated:true,

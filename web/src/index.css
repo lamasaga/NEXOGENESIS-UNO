@@ -1770,6 +1770,9 @@ html, body, #root {
 /* Keep the active conversation usable when the desktop columns no longer fit. */
 .mobile-navigation-toggle, .mobile-navigation-backdrop { display: none; }
 .connection-notice { flex: 0 0 auto; padding: 8px 14px; color: #edce99; background: #493e2d; font-size: 12px; line-height: 1.5; }
+.instance-recovery-notice { flex: 0 0 auto; max-height: 28vh; overflow: auto; padding: 6px 14px; color: #edce99; background: #352f28; font-size: 12px; line-height: 1.6; }
+.instance-recovery-notice p { margin: 3px 0; }
+.instance-recovery-notice button { display: inline-block; white-space: nowrap; margin-inline-start: 6px; }
 @media (max-width: 720px) {
   .mobile-navigation-toggle { display: inline-flex; }
   .app-workspace { position: relative; }
@@ -1954,3 +1957,5 @@ html, body, #root {
 .border-sky-300\/25, .border-sky-300\/45 { border-color: var(--blue-aux-border) !important; }
 .border-sky-300 { border-color: var(--blue-primary) !important; }
 .border-sky-400\/55 { border-color: var(--blue-aux) !important; }
+.async-panel-notice { position: fixed; z-index: 1000; inset: 25% max(16px, calc((100vw - 540px) / 2)) auto; background: var(--bg, #202328); color: var(--ink, #eef1f3); border: 1px solid #677580; border-radius: 12px; padding: 24px; box-shadow: 0 12px 48px #0008; }
+.async-panel-notice button { margin: 12px 12px 0 0; padding: 8px 16px; border: 1px solid currentColor; border-radius: 6px; }

@@ -102,7 +102,7 @@ export interface UnoPreparation {
   card_classification?:'ordered-single-type-and-domains-v2';
   compile_version?:string; compile_hints?:Array<{id:string;label:string;prompt:string}>;
   authority: "manual" | "trusted"; types: Array<{id:string;label:string}>; domains:Array<{id:string;title:string;summary?:string;parents:string[]}>;domain_governance?:{contract:string;unassigned_count:number;pending_proposals:number};
-  sources: Array<{path:string;compile_state?:'unfinished'|'archive_review'|'archive_pending';job_id?:string;processed_units?:number;total_units?:number;open_items?:number}>;
+  sources: Array<{path:string;compile_available?:boolean;compile_unavailable_reason?:string;compile_max_bytes?:number;upload_max_bytes?:number;compile_state?:'unfinished'|'archive_review'|'archive_pending';job_id?:string;processed_units?:number;total_units?:number;open_items?:number}>;
   archived_sources?:Array<{path:string;job_id:string;title:string;source_ref:string;source_revision:string}>;
   cards: Array<{id:string;title:string;type:string;domains:string[]}>;
   jobs: Array<{id:string;mode:"compile"|"construct";title:string;status:string}>;
@@ -167,7 +167,14 @@ export async function reviewUnoBookArchive(job:UnoJob,source:string):Promise<Uno
 export async function fetchUnoSource(jobId: string, ref: string): Promise<{body:string;locator:string}> {
   return jsonOrThrow(await fetch("/api/uno/jobs/" + encodeURIComponent(jobId) + "?source=" + encodeURIComponent(ref)));
 }
+import { waitForSignal } from './abort';
 let localRequestToken: string | null = null;
+let localTokenEpoch = 0;
+let requestInstance: string | null = null;
+let requestEpoch = 0;
+let requestIdentityUncertain = false;
+export function suspendInstanceWrites() { requestIdentityUncertain=true;requestEpoch++; }
+export function setRequestInstance(id: string | null) { requestInstance=id;requestIdentityUncertain=false;requestEpoch++; }
 let localRequestTokenPromise: Promise<string> | null = null;
 const GRAPH_OVERVIEW_CACHE_KEY = "nexogenesis.graph-overview.v3";
 const GRAPH_OVERVIEW_CACHE_TTL_MS = 60_000;
@@ -177,6 +184,7 @@ let graphOverviewRequest: { epoch: number; promise: Promise<GraphOverviewStats> 
 
 /** Test isolation hook; production code never needs to clear the process token. */
 export function __resetLocalRequestTokenForTests(): void {
+  localTokenEpoch++;
   localRequestToken = null;
   localRequestTokenPromise = null;
 }
@@ -190,36 +198,71 @@ export function __resetGraphOverviewCacheForTests(): void {
 
 async function getLocalRequestToken(force = false): Promise<string> {
   if (force) {
+    localTokenEpoch++;
     localRequestToken = null;
     localRequestTokenPromise = null;
   }
   if (localRequestToken) return localRequestToken;
   if (!localRequestTokenPromise) {
-    localRequestTokenPromise = globalThis.fetch("/api/security/session")
+    const epoch = localTokenEpoch;
+    const signal = AbortSignal.timeout(10000);
+    const request = waitForSignal(globalThis.fetch("/api/security/session", {signal})
       .then(async (response) => {
         if (!response.ok) throw new Error(`本地安全会话初始化失败: ${response.status}`);
         const body = await response.json();
         if (typeof body?.token !== "string" || !body.token) throw new Error("本地安全会话没有返回令牌");
-        localRequestToken = body.token;
+        if (epoch === localTokenEpoch) localRequestToken = body.token;
         return body.token;
-      })
-      .finally(() => { localRequestTokenPromise = null; });
+      }), signal).catch(error=>{if(epoch===localTokenEpoch){localTokenEpoch++;localRequestToken=null;}throw error;}).finally(() => { if (localRequestTokenPromise === request) localRequestTokenPromise = null; });
+    localRequestTokenPromise = request;
   }
   return localRequestTokenPromise;
 }
 
 /** Same-origin API wrapper: unsafe requests carry a per-process local token. */
 async function fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const independent = String(input).startsWith('/api/instances') || String(input) === '/api/security/session';
+  const epoch = requestEpoch;
+  const identity = requestInstance;
+  const headers = new Headers(init?.headers);
   const method = String(init?.method ?? "GET").toUpperCase();
-  if (SAFE_METHODS.has(method)) return globalThis.fetch(input, init);
+  const signal = SAFE_METHODS.has(method) ? (init?.signal ? AbortSignal.any([init.signal,AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000)) : init?.signal;
+  if (!independent && identity && !headers.has('X-Nexogenesis-Instance')) headers.set('X-Nexogenesis-Instance',identity);
+  init = {...init,headers,signal};
+  const deliver = (response:Response) => {
+    if (!independent && epoch !== requestEpoch) throw new Error('知识库已切换，已忽略旧请求结果。');
+    if (response.status === 409 && typeof window !== 'undefined') void response.clone().json().then(body=>{if(body?.code==='INSTANCE_CHANGED')window.dispatchEvent(new Event('uno-instance-changed'));}).catch(()=>{});
+    for (const name of ['json','text'] as const) {
+      if(typeof response[name]!=='function')continue;
+      const read=response[name].bind(response);
+      response[name]=async()=>{
+        const value=await waitForSignal(read(),signal);
+        if(!independent&&epoch!==requestEpoch)throw new Error('知识库已切换，已忽略旧请求结果。');
+        return value;
+      };
+    }
+    return response;
+  };
+  if (SAFE_METHODS.has(method)) {
+    return deliver(await waitForSignal(globalThis.fetch(input, {...init,signal}),signal));
+  }
   const request = async (forceToken: boolean) => {
-    const token = await getLocalRequestToken(forceToken);
+    init?.signal?.throwIfAborted();
+    if (!independent && requestIdentityUncertain) throw new Error('当前知识库身份待核对，暂不提交写操作。');
+    if (!independent && epoch !== requestEpoch) throw new Error('知识库已切换，未提交旧请求。');
+    const token = await waitForSignal(getLocalRequestToken(forceToken), init?.signal);
+    init?.signal?.throwIfAborted();
+    if (!independent && epoch !== requestEpoch) throw new Error('知识库已切换，未提交旧请求。');
     const headers = new Headers(init?.headers);
     headers.set("X-Nexogenesis-CSRF", token);
-    return globalThis.fetch(input, { ...init, headers });
+    return waitForSignal(globalThis.fetch(input, { ...init, headers }),init?.signal);
   };
   const first = await request(false);
-  return first.status === 403 ? request(true) : first;
+  if (first.status === 403) {
+    const error = await waitForSignal(first.clone().json(),init?.signal).catch(error=>{init?.signal?.throwIfAborted();return null;});
+    if (error?.code === 'LOCAL_TOKEN_INVALID') return deliver(await request(true));
+  }
+  return deliver(first);
 }
 
 export async function fetchGraph(): Promise<GraphData> {
@@ -238,7 +281,7 @@ export interface CardDetail {
   updated: string; body: string;
 }
 
-export interface KnowledgeInstanceSummary { id: string; name: string; legacy: boolean; active: boolean; card_count: number; }
+export interface KnowledgeInstanceSummary { id: string; name: string; legacy: boolean; active: boolean; card_count: number | null; status?: 'available'|'unavailable'|'invalid_manifest'; reason?:string; warnings?:string[]; }
 export interface KnowledgeInstanceList { active_instance_id: string | null; instances: KnowledgeInstanceSummary[]; }
 export interface ProjectKnowledge { project_id: string; project_name: string; knowledge_instance_ids: string[]; instances: KnowledgeInstanceSummary[]; }
 export async function fetchProjectKnowledge(projectId: string): Promise<ProjectKnowledge> {
@@ -249,7 +292,7 @@ export async function saveProjectKnowledge(projectId: string, ids: string[]): Pr
 }
 
 export async function fetchKnowledgeInstances(): Promise<KnowledgeInstanceList> { return jsonOrThrow(await fetch("/api/instances", { cache: "no-store" })); }
-export async function switchKnowledgeInstance(instanceId: string): Promise<void> { await jsonOrThrow(await fetch("/api/instances/switch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance_id: instanceId }) })); }
+export async function switchKnowledgeInstance(instanceId: string): Promise<{active_instance_id:string;instance:KnowledgeInstanceSummary}> { return jsonOrThrow(await fetch("/api/instances/switch", { method: "POST", signal:AbortSignal.timeout(15000), headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance_id: instanceId }) })); }
 export async function createKnowledgeInstance(name: string): Promise<void> { await jsonOrThrow(await fetch("/api/instances", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })); }
 export async function registerKnowledgeInstance(path: string, name: string): Promise<void> { await jsonOrThrow(await fetch("/api/instances/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, name }) })); }
 export async function renameKnowledgeInstance(instanceId: string, name: string): Promise<void> { await jsonOrThrow(await fetch(`/api/instances/${encodeURIComponent(instanceId)}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }) })); }
@@ -343,11 +386,18 @@ export function subscribeEvents(conversationId: string | null, onEvent: (ev: Sim
   const query = conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : "";
   const es = new EventSource(`/api/events${query}`);
   let closed=false;
+  let lastEpoch:string|undefined,lastSeq=0;
   es.onopen=()=>{if(!closed)onOpen?.();};
   es.onmessage = (msg) => {
     if(closed)return;
     try {
-      onEvent(JSON.parse(msg.data) as SimEvent);
+      const frame=JSON.parse(msg.data) as SimEvent & {epoch?:string;seq?:number};
+      if(frame.epoch&&typeof frame.seq==='number') {
+        if(frame.epoch===lastEpoch&&frame.seq<=lastSeq)return;
+        if(lastEpoch&&lastEpoch!==frame.epoch)onOpen?.();
+        lastEpoch=frame.epoch;lastSeq=frame.seq;
+      }
+      onEvent(frame);
     } catch {
       /* 忽略坏帧 */
     }
@@ -1025,9 +1075,11 @@ export async function controlConversation(sessionId: string, action: "discuss" |
   }));
 }
 
-export async function fetchCognitiveSession(sessionId: string): Promise<CognitiveRunSnapshot | null> {
-  const result = await jsonOrThrow(await fetch(`/api/cognition/sessions/${encodeURIComponent(sessionId)}`));
-  return result?.active === false ? null : result as CognitiveRunSnapshot;
+const cognitiveRequests=new Map<string,Promise<CognitiveRunSnapshot|null>>();
+export function fetchCognitiveSession(sessionId: string): Promise<CognitiveRunSnapshot | null> {
+  const key=`${requestEpoch}:${sessionId}`,existing=cognitiveRequests.get(key);if(existing)return existing;
+  const request=fetch(`/api/cognition/sessions/${encodeURIComponent(sessionId)}`).then(jsonOrThrow).then(result=>result?.active===false?null:result as CognitiveRunSnapshot).finally(()=>{if(cognitiveRequests.get(key)===request)cognitiveRequests.delete(key);});
+  cognitiveRequests.set(key,request);return request;
 }
 
 
@@ -1057,14 +1109,14 @@ export async function confirmWrite(proposalId: string, decision: "confirm" | "ca
 export interface InboxUploadItem { index: number; name: string; status: "saved" | "existing" | "failed"; path?: string; detail?: string }
 export interface InboxUploadProgress { total: number; completed: number; saved: number; existing: number; failed: Array<{file: File; detail: string}> }
 export const MAX_INBOX_FILE_BYTES = 256 * 1024 * 1024;
-export async function uploadInbox(files: FileList | readonly File[], libraryId?: string): Promise<{ saved: string[]; items?: InboxUploadItem[] }> {
+export async function uploadInbox(files: FileList | readonly File[], libraryId?: string, signal?:AbortSignal): Promise<{ saved: string[]; items?: InboxUploadItem[] }> {
   const fd = new FormData();
   for (const f of Array.from(files)) fd.append("files", f);
-  return jsonOrThrow(await fetch("/api/inbox", { method: "POST", body: fd, headers: libraryId ? {"X-Nexogenesis-Instance": libraryId} : undefined }));
+  return jsonOrThrow(await fetch("/api/inbox", { method: "POST", body: fd, signal, headers: libraryId ? {"X-Nexogenesis-Instance": libraryId} : undefined }));
 }
 
 /** Keep total selection unbounded, but bound every HTTP request and account for every file. */
-export async function uploadInboxInBatches(files: readonly File[], libraryId: string, onProgress: (value: InboxUploadProgress) => void): Promise<InboxUploadProgress> {
+export async function uploadInboxInBatches(files: readonly File[], libraryId: string, onProgress: (value: InboxUploadProgress) => void, signal?:AbortSignal): Promise<InboxUploadProgress> {
   let state: InboxUploadProgress = {total: files.length, completed: 0, saved: 0, existing: 0, failed: []};
   const batches: File[][] = [];
   let batch: File[] = [], bytes = 0;
@@ -1081,9 +1133,11 @@ export async function uploadInboxInBatches(files: readonly File[], libraryId: st
   }
   if (batch.length) batches.push(batch);
   onProgress({...state, failed: [...state.failed]});
-  for (const group of batches) {
+  for (const [batchIndex,group] of batches.entries()) {
+    if(signal?.aborted){state={...state,failed:[...state.failed,...batches.slice(batchIndex).flat().map(file=>({file,detail:'已停止，尚未发送此文件。'}))]};onProgress(state);break;}
     try {
-      const result = await uploadInbox(group, libraryId);
+      const timeout=AbortSignal.timeout(120000);
+      const result = await uploadInbox(group, libraryId, signal?AbortSignal.any([signal,timeout]):timeout);
       const items = result.items;
       if (!items || items.length !== group.length || new Set(items.map(item => item.index)).size !== group.length ||
           items.some(item => !Number.isInteger(item.index) || item.index < 0 || item.index >= group.length || !["saved", "existing", "failed"].includes(item.status))) {

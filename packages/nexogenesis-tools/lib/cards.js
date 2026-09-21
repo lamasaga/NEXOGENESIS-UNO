@@ -6,7 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync, writeFileSync, mkdirSync, renameSync, unlinkSync, existsSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve, relative, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { parseDocument, stringify as stringifyYaml } from "yaml";
 import { displayType, LINK_LABELS } from "./uno-contract.js";
@@ -23,6 +23,7 @@ const CARD_SNAPSHOT_VALIDATE_MS = 5000;
 const cardSnapshots = new Map();
 const snapshotVersions = new Map();
 const snapshotCounters = new Map();
+const observedCardRoots = new Set();
 
 function canonicalRoot(root) {
 	return resolve(root).toLocaleLowerCase();
@@ -126,17 +127,21 @@ function listMarkdown(dir) {
 function cardInventory(root) {
 	const dir = join(root, "01-Cards");
 	let files = [];
+	const errors = [];
 	try {
-		if (statSync(dir).isDirectory()) files = listMarkdown(dir).sort((a, b) => a.localeCompare(b, "zh-CN"));
-	} catch {
-		files = [];
+		if (statSync(dir).isDirectory()) { observedCardRoots.add(canonicalRoot(root)); files = listMarkdown(dir).sort((a, b) => a.localeCompare(b, "zh-CN")); }
+		else errors.push({ file: '01-Cards', code: 'NOT_DIRECTORY' });
+	} catch (error) {
+		if (!(error.code === 'ENOENT' && existsSync(root) && !observedCardRoots.has(canonicalRoot(root)) && !existsSync(join(root,'nexogenesis.instance.yml')))) errors.push({ file: '01-Cards', code: error.code ?? 'READ_FAILED' });
 	}
 	const hash = createHash("sha256");
-	for (const file of files) {
-		const stat = statSync(file);
+	const readable = [];
+	for (const file of files) { try {
+		const stat = statSync(file); readable.push(file);
 		hash.update(file).update("\u0000").update(String(stat.size)).update("\u0000").update(String(stat.mtimeMs)).update("\n");
-	}
-	return { files, signature: hash.digest("hex") };
+	} catch (error) { errors.push({ file: relative(root, file), code: error.code ?? 'STAT_FAILED' }); } }
+	hash.update(JSON.stringify(errors));
+	return { files: readable, errors, unavailable: errors.some(error => error.file === '01-Cards'), signature: hash.digest("hex") };
 }
 
 function isExampleCard(meta) {
@@ -171,15 +176,21 @@ export function scanCards(root, { includeExamples = false, includeInactive = fal
 	counters.misses += 1;
 	counters.scans += 1;
 	const cards = new Map();
+	const allCards = new Map();
 	const seenFiles = new Map();
 	const allSeenFiles = new Map();
 	const excludedExamples = [];
 	const duplicateIds = [];
+	const failures = [...inventory.errors];
 	for (const file of inventory.files) {
-		const { meta, body } = parseCardFile(file);
+		let parsed;
+		try { parsed = parseCardFile(file); }
+		catch (error) { failures.push({ file: relative(root, file), code: error.code ?? 'CARD_PARSE_FAILED' }); continue; }
+		const { meta, body } = parsed;
 		if (meta.kind === "uno-domain-index") continue;
 		const id = meta.id;
 		if (typeof id !== "string" || id === "") continue;
+		if ((includeExamples || !isExampleCard(meta)) && !allCards.has(id)) allCards.set(id, { meta, body, file });
 		const lifecycle = meta.lifecycle;
 		if (!includeInactive && lifecycle !== void 0 && lifecycle !== "active") continue;
 		if (allSeenFiles.has(id)) duplicateIds.push({ id, files: [allSeenFiles.get(id), file] });
@@ -196,11 +207,14 @@ export function scanCards(root, { includeExamples = false, includeInactive = fal
 	}
 	const value = {
 		cards,
+		status: inventory.unavailable ? 'unavailable' : failures.length ? 'partial' : 'complete',
 		diagnostics: {
+			failures,
 			excluded_examples: excludedExamples,
 			duplicate_ids: duplicateIds
 		}
 	};
+	Object.defineProperties(cards, { snapshotStatus: {value:value.status}, diagnostics: {value:value.diagnostics}, relationTargets: {value:allCards} });
 	const version = nextSnapshotVersion(root);
 	cardSnapshots.set(key, { signature: inventory.signature, value, version, validatedAt: now });
 	evictOldSnapshots();
@@ -233,7 +247,9 @@ export function resetKnowledgeSnapshot(root) {
 
 /** Load all active, non-example cards from 01-Cards/ (id-keyed). */
 export function loadCards(root, options) {
-	return scanCards(root, options).cards;
+	const snapshot = scanCards(root, options);
+	if (snapshot.status !== 'complete' && !options?.allowPartial) throw Object.assign(new Error('知识目录读取不完整，请检查损坏或不可访问的文件。'), { code: 'KNOWLEDGE_INCOMPLETE', details: snapshot.diagnostics });
+	return snapshot.cards;
 }
 
 /** Tokenize a query into lowercase keyword fragments (CJK-aware: keeps 2+ char runs). */

@@ -262,7 +262,7 @@ describe("client", () => {
   it("fetchInboxDocuments returns selectable Inbox materials", async () => {
     mockFetch((url, init) => {
       expect(url).toBe("/api/inbox");
-      expect(init).toBeUndefined();
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
       return { ok: true, body: { documents: [{ path: "books/a.epub", doc_type: "epub", size: 2048, modified_at: 1 }] } };
     });
     expect((await fetchInboxDocuments()).documents[0].path).toBe("books/a.epub");

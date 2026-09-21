@@ -149,7 +149,7 @@ export function recoverInterruptedUnoJobs(root) {
   return result;
 }
 function inboxCompilationInventory(root, jobs) {
-  const inbox = listInbox(root), ordered = [...jobs].sort((a,b) => String(b.updated_at??b.created_at??'').localeCompare(String(a.updated_at??a.created_at??'')));
+  const inbox = listInbox(root).map(row=>({...row,compile_available:row.size<=50*1024*1024,compile_max_bytes:50*1024*1024,upload_max_bytes:256*1024*1024,...(row.size>50*1024*1024?{compile_unavailable_reason:'原件已保存；直接编译最多 50 MiB。请拆分材料或转换为较小的文本后重新导入。'}:{})})), ordered = [...jobs].sort((a,b) => String(b.updated_at??b.created_at??'').localeCompare(String(a.updated_at??a.created_at??'')));
   const archived_sources = [], sources = [];
   for (const row of inbox) {
     const source = row.path.startsWith('00-Inbox/') ? row.path : `00-Inbox/${row.path}`;

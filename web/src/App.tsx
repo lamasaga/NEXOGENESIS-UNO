@@ -1,10 +1,14 @@
 import { cardTypeLabel } from "./components/cardReading";
+import { readStorage, writeStorage } from './conversations/safeStorage';
+import { setRequestInstance, suspendInstanceWrites } from './api/client';
+import { pollAfterSettlement } from './api/poll';
 import { workSyncErrorMessage } from './conversations/syncError';
 import { savedView, rememberConversation, forgetView, pendingStart, completeStart } from './conversations/recovery';
 import { ConversationControls } from "./components/ConversationControls";
 import { ownedStreamHandlers } from "./conversations/ownership";
 import { fetchUnoJob, updateUnoJob } from "./api/client";
-import { lazy, startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { recoverablePanel } from './components/RecoverablePanel';
 import { Cards, ClockCounterClockwise, ListChecks, Question, ShareNetwork, Star } from "@phosphor-icons/react";
 import { ActivationEngine, type GraphNarration } from "./activation/engine";
 import { activationNow } from "./activation/clock";
@@ -45,10 +49,10 @@ import { graphTopologyDelta, projectWorkNeuralFlow, visibleGraphNodeIds } from "
 import { useUnoUnassignedQueue } from './uno/unassignedQueue';
 import { readConversationCache, removeConversationCache, updateConversationCache, writeConversationCache } from './conversations/conversationCache';
 
-const PromptInspector=lazy(()=>import('./components/PromptInspector').then(module=>({default:module.PromptInspector})));
-const SettingsModal=lazy(()=>import('./components/SettingsModal').then(module=>({default:module.SettingsModal})));
-const UnoKnowledgePanel=lazy(()=>import('./components/UnoKnowledgePanel').then(module=>({default:module.UnoKnowledgePanel})));
-const CardBrowser=lazy(()=>import('./components/CardBrowser').then(module=>({default:module.CardBrowser})));
+const PromptInspector=recoverablePanel<Parameters<typeof import('./components/PromptInspector').PromptInspector>[0]>(()=>import('./components/PromptInspector').then(module=>({default:module.PromptInspector})),'请求查看器','PromptInspector');
+const SettingsModal=recoverablePanel<Parameters<typeof import('./components/SettingsModal').SettingsModal>[0]>(()=>import('./components/SettingsModal').then(module=>({default:module.SettingsModal})),'设置','SettingsModal');
+const UnoKnowledgePanel=recoverablePanel<Parameters<typeof import('./components/UnoKnowledgePanel').UnoKnowledgePanel>[0]>(()=>import('./components/UnoKnowledgePanel').then(module=>({default:module.UnoKnowledgePanel})),'知识工作台','UnoKnowledgePanel');
+const CardBrowser=recoverablePanel<Parameters<typeof import('./components/CardBrowser').CardBrowser>[0]>(()=>import('./components/CardBrowser').then(module=>({default:module.CardBrowser})),'卡片浏览器','CardBrowser');
 
 const PIPELINE_LABELS: Record<PipelineStage, string> = {
   compile: "编译",
@@ -84,7 +88,7 @@ function reconcileChoiceRequest(current: CognitiveInteraction[], sessionId: stri
 function readStoredCards(key: string, limit?: number): ViewedCard[] {
   if (typeof window === "undefined") return [];
   try {
-    const stored = window.localStorage.getItem(key);
+    const stored = readStorage('localStorage',key);
     const parsed = stored ? JSON.parse(stored) : [];
     return Array.isArray(parsed) ? (limit ? parsed.slice(0, limit) : parsed) : [];
   } catch {
@@ -99,6 +103,9 @@ export default function App() {
   const [openCardIds, setOpenCardIds] = useState<string[]>([]);
   const [recentCards, setRecentCards] = useState<ViewedCard[]>([]);
   const [favoriteCards, setFavoriteCards] = useState<ViewedCard[]>([]);
+  const [preferencesLibrary, setPreferencesLibrary] = useState<string | null>(null);
+  const [storageNotice, setStorageNotice] = useState(false);
+  useEffect(() => {const notify=()=>setStorageNotice(true);window.addEventListener('uno-storage-unavailable',notify);return()=>window.removeEventListener('uno-storage-unavailable',notify);},[]);
   const [activityTick, setTick] = useState(0);
   const [graphNarration, setGraphNarration] = useState<GraphNarration>({
     phase: "idle", title: "知识图谱", detail: "等待新的问题",
@@ -123,6 +130,7 @@ export default function App() {
   const [importBusy, setImportBusy] = useState(false);
   const [importTarget, setImportTarget] = useState<{id: string; name: string} | null>(null);
   const importLock = useRef(false);
+  const importController=useRef<AbortController|null>(null);
   const [sending, setSending] = useState(false);
   const [interrupting, setInterrupting] = useState(false);
   const [backendCompatible,setBackendCompatible]=useState(false);
@@ -158,6 +166,9 @@ export default function App() {
   const [knowledgeInstances, setKnowledgeInstances] = useState<KnowledgeInstanceList>({ active_instance_id: null, instances: [] });
   const [switchingInstance, setSwitchingInstance] = useState(false);
   const [instanceError, setInstanceError] = useState<string | null>(null);
+  const instanceEpoch = useRef(0);
+  const switchLock = useRef(false);
+  const identityConfirmed = useRef(false);
   const activeInstanceId = knowledgeInstances.active_instance_id ?? "legacy";
   const refreshConversationWindow = useCallback(async (id: string, options: { signal?: AbortSignal; forceTail?: boolean } = {}) => {
     const cached = readConversationCache(activeInstanceId, id);
@@ -210,7 +221,7 @@ export default function App() {
     const epoch=workSyncEpoch.current;
     const request=(async()=>{
       try {const result=await fetchWork(AbortSignal.timeout(10000));if(epoch!==workSyncEpoch.current)return null;
-        setWorkItems(result.items);setBackendCompatible(result.controls_version===1&&result.start_request_version===1);setWorkConnected(true);setWorkError(null);return result;
+        setWorkItems(result.items);setBackendCompatible(result.controls_version===1&&result.start_request_version===1);setWorkConnected(identityConfirmed.current&&!switchLock.current);setWorkError(null);return result;
       }catch (error) {if(epoch===workSyncEpoch.current){setWorkConnected(false);setWorkError(workSyncErrorMessage(error));}return null;}
     })().finally(()=>{if(workSyncRequest.current===request)workSyncRequest.current=null;});
     workSyncRequest.current=request;return request;
@@ -233,7 +244,7 @@ export default function App() {
   }, [activeInstanceId,refreshWork]);
 
   const refreshProjects = useCallback(() => {
-    fetchProjects().then(setProjects).catch(() => { /* 忽略 */ });
+    const epoch=instanceEpoch.current;fetchProjects().then(value=>{if(epoch===instanceEpoch.current)setProjects(value);}).catch(() => { /* 忽略 */ });
   }, []);
 
   const openCard = useCallback((cardId: string) => {
@@ -280,22 +291,23 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(`nexogenesis-recent-cards.${activeInstanceId}`, JSON.stringify(recentCards));
-  }, [activeInstanceId, recentCards]);
+    if (preferencesLibrary === activeInstanceId) writeStorage('localStorage',`nexogenesis-recent-cards.${activeInstanceId}`, JSON.stringify(recentCards));
+  }, [activeInstanceId, recentCards, preferencesLibrary]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    window.localStorage.setItem(`nexogenesis-favorite-cards.${activeInstanceId}`, JSON.stringify(favoriteCards));
-  }, [activeInstanceId, favoriteCards]);
+    if (preferencesLibrary === activeInstanceId) writeStorage('localStorage',`nexogenesis-favorite-cards.${activeInstanceId}`, JSON.stringify(favoriteCards));
+  }, [activeInstanceId, favoriteCards, preferencesLibrary]);
 
   useEffect(() => {
     setUnoPanel(null);
     setRecentCards(readStoredCards(`nexogenesis-recent-cards.${activeInstanceId}`, 12));
     setFavoriteCards(readStoredCards(`nexogenesis-favorite-cards.${activeInstanceId}`));
+    setPreferencesLibrary(activeInstanceId);
   }, [activeInstanceId]);
 
   const refreshPipelineStatus = useCallback(() => {
-    fetchPipelineStatus().then(setPipelineStatus).catch(() => { /* 忽略 */ });
+    const epoch=instanceEpoch.current;fetchPipelineStatus().then(value=>{if(epoch===instanceEpoch.current)setPipelineStatus(value);}).catch(() => { /* 忽略 */ });
   }, []);
 
   const loadCognition = useCallback((sessionId: string) => {
@@ -315,36 +327,57 @@ export default function App() {
         setProposals(snapshot.pending_proposals ?? []);
         return snapshot;
       })
-      .catch(() => setCognition(null));
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    fetchGraph().then(setData).catch((e) => setError(String(e)));
-    refreshProjects();
-    refreshPipelineStatus();
-    fetchKnowledgeInstances().then(setKnowledgeInstances).catch((e) => setInstanceError(String(e)));
+    let disposed=false;
+    fetchKnowledgeInstances().then(instances=>{
+      if(disposed)return;setRequestInstance(instances.active_instance_id);identityConfirmed.current=Boolean(instances.active_instance_id);setKnowledgeInstances(instances);
+      fetchGraph().then(graph=>{if(!disposed)setData(graph);}).catch((e)=>{if(!disposed)setError(String(e));});
+      refreshProjects();refreshPipelineStatus();
+    }).catch((e) => {if(!disposed)setInstanceError(String(e));});
     fetchSettings()
       .then((s) => setUsername(s.username))
       .catch(() => { /* 设置不可用时保持默认名 */ });
+    return()=>{disposed=true;};
   }, [refreshPipelineStatus, refreshProjects]);
 
   const changeKnowledgeInstance = useCallback(async (instanceId: string) => {
-    if (!instanceId || instanceId === knowledgeInstances.active_instance_id || switchingInstance) return;
+    if (!instanceId || switchLock.current) return;
+    switchLock.current=true;const epoch=++instanceEpoch.current;
+    identityConfirmed.current=false;suspendInstanceWrites();
+    workSyncEpoch.current++;workSyncRequest.current=null;setWorkConnected(false);
     conversationLoadController.current?.abort(); conversationLoadController.current = null;
     olderMessagesController.current?.abort(); olderMessagesController.current = null; setOlderMessagesLoading(false);
     conversationLoadVersion.current++; setConversationLoad(null);
     setSwitchingInstance(true); setInstanceError(null);
     try {
-      await switchKnowledgeInstance(instanceId);
+      let confirmed:string|null;
+      try { confirmed=(await switchKnowledgeInstance(instanceId)).active_instance_id; }
+      catch { confirmed=(await fetchKnowledgeInstances()).active_instance_id; }
+      if(!confirmed)throw Error('无法确认当前库，已暂停写入，请重新检查。');
+      setRequestInstance(confirmed);
+      identityConfirmed.current=true;
+      setKnowledgeInstances(current=>({...current,active_instance_id:confirmed,instances:current.instances.map(item=>({...item,active:item.id===confirmed}))}));
       activeRequestRef.current?.abort(); activeRequestRef.current = null; setSending(false); setWorkItems([]); setWorkOpen(false);
       invalidateGraphOverviewCache();
-      const [instances, graph, nextProjects, status] = await Promise.all([fetchKnowledgeInstances(), fetchGraph(), fetchProjects(), fetchPipelineStatus()]);
-      setKnowledgeInstances(instances); setData(graph); setProjects(nextProjects); setPipelineStatus(status);
+      setData(null);setProjects([]);setPipelineStatus({inbox:0,scratch:0});setError(null);
       setConv(null); convIdRef.current = null; setLocalMsgs([]); setSteps([]); setProposals([]); setCandidates([]); setChoiceRequests([]); setCognition(null); setPipelineRun(null); setOpenCardIds([]);
+      const results=await Promise.allSettled([
+        fetchKnowledgeInstances().then(value=>{if(epoch===instanceEpoch.current)setKnowledgeInstances(value);}),
+        fetchGraph().then(value=>{if(epoch===instanceEpoch.current)setData(value);}).catch(error=>{if(epoch===instanceEpoch.current)setError('当前库图谱加载失败，可重新核对当前库。');throw error;}),
+        fetchProjects().then(value=>{if(epoch===instanceEpoch.current)setProjects(value);}),
+        fetchPipelineStatus().then(value=>{if(epoch===instanceEpoch.current)setPipelineStatus(value);}),
+      ]);
+      if(results.some(result=>result.status==='rejected'))setInstanceError(`已确认当前库为 ${confirmed}；部分资源加载失败，可重新核对当前库。`);
+      else if(confirmed!==instanceId)setInstanceError(`切换未确认为目标库，当前仍为 ${confirmed}。`);
       setGraphNarration({ phase: "idle", title: "知识图谱", detail: "已切换知识实例" });
-    } catch (error) { const message = `切换知识实例失败：${String(error)}`; setInstanceError(message); setWorkStage(null); setWorkOpen(true); void refreshWork(); throw new Error(message); }
-    finally { setSwitchingInstance(false); }
+    } catch (error) { const message = `当前知识库身份待核对，写操作已暂停：${String(error)}`; setInstanceError(message); setWorkStage(null); setWorkOpen(true); throw new Error(message); }
+    finally { setSwitchingInstance(false);switchLock.current=false; }
   }, [knowledgeInstances.active_instance_id, pipelineRun?.phase, sending, switchingInstance]);
+
+  useEffect(()=>{const changed=()=>{identityConfirmed.current=false;suspendInstanceWrites();setWorkConnected(false);setInstanceError('知识库已在其他页面切换，请重新核对当前库。');};window.addEventListener('uno-instance-changed',changed);return()=>window.removeEventListener('uno-instance-changed',changed);},[]);
 
   const refreshKnowledgeInstances = useCallback(async () => setKnowledgeInstances(await fetchKnowledgeInstances()), []);
   const createManagedInstance = useCallback(async (name: string) => { await createKnowledgeInstance(name); await refreshKnowledgeInstances(); }, [refreshKnowledgeInstances]);
@@ -353,7 +386,9 @@ export default function App() {
   const removeManagedInstance = useCallback(async (id: string) => { await unregisterKnowledgeInstance(id); await refreshKnowledgeInstances(); }, [refreshKnowledgeInstances]);
 
   useEffect(() => {
+    let disposed=false;
     const syncJob = () => fetchPipelineJob().then((job) => {
+      if(disposed)return;
       if (!job || !["running", "waiting_user", "completed", "blocked", "paused", "cancelled", "failed"].includes(job.state)) return;
       setPipelineRun((current) => current?.jobId === job.id ? {
         ...current, phase: job.state, label: job.label, detail: job.detail, pauseRequested: job.pause_requested,
@@ -361,11 +396,10 @@ export default function App() {
         stage: job.stage, phase: job.state, label: job.label,
         detail: job.detail, jobId: job.id, steps: [], startedAt: Date.now(), pauseRequested: job.pause_requested,
       });
-    }).catch(() => { /* 后台任务状态不可用时不阻断页面 */ });
-    syncJob();
-    const timer = window.setInterval(syncJob, 3000);
-    return () => window.clearInterval(timer);
-  }, []);
+    });
+    const stop=pollAfterSettlement(syncJob,3000);
+    return () => {disposed=true;stop();};
+  }, [activeInstanceId]);
 
   // 写入确认和方向选择会由服务端把结果交回同一 Agent Loop；这段继续运行
   // 不属于最初的 SSE 请求，因此固定线程需要短暂轮询会话，避免界面停在旧结果。
@@ -384,20 +418,11 @@ export default function App() {
           const freshTail = fresh.messages.at(-1)?.content;
           return current.messages.length === fresh.messages.length && previousTail === freshTail ? current : fresh;
         });
-        const cognitive = await fetchCognitiveSession(fresh.id);
-        if (!disposed) setCognition((current) => cognitive === null ? null : current?.snapshot.run.run_id === cognitive.run.run_id
-          ? { ...current, snapshot: cognitive }
-          : cognitiveViewFromSnapshot(cognitive));
-        if (!disposed) {
-          setChoiceRequests((current) => reconcileChoiceRequest(current, fresh.id, cognitive?.interaction ?? null));
-          setProposals(cognitive?.pending_proposals ?? []);
-        }
-      } catch { /* 后台同步失败不打断当前任务 */ }
+      } catch (error) { throw error; }
     };
-    void syncFollowUp();
-    if (pipelineRun.phase !== "running") return () => { disposed = true; };
-    const timer = window.setInterval(() => void syncFollowUp(), 1200);
-    return () => { disposed = true; window.clearInterval(timer); };
+    if (pipelineRun.phase !== "running") {void syncFollowUp().catch(()=>{});return () => { disposed = true; };}
+    const stop=pollAfterSettlement(syncFollowUp,1200);
+    return () => { disposed = true; stop(); };
   }, [conv?.id, conv?.task_kind, pipelineRun?.phase, refreshConversationWindow, sending]);
 
   // CognitiveRun 是可恢复事实：SSE 负责即时感，轮询只在任务活跃时补足刷新/断线后的快照。
@@ -422,11 +447,10 @@ export default function App() {
           setProposals(snapshot.pending_proposals ?? []);
         }
       })
-      .catch(() => { if (!disposed && convIdRef.current === conv.id) setCognition(null); });
-    void sync();
-    if (!sending && pipelineRun?.phase !== "running") return () => { disposed = true; };
-    const timer = window.setInterval(sync, 1500);
-    return () => { disposed = true; window.clearInterval(timer); };
+      .catch(error => { throw error; });
+    if (!sending && pipelineRun?.phase !== "running") {void sync().catch(()=>{});return () => { disposed = true; };}
+    const stop=pollAfterSettlement(sync,1500);
+    return () => { disposed = true; stop(); };
   }, [conv?.id, sending, pipelineRun?.phase]);
 
   // 激活引擎必须跨图数据刷新存活：写入事件常先于新图返回，重建引擎会丢掉
@@ -1081,9 +1105,11 @@ export default function App() {
   const performImport = useCallback(async (files: File[], target: {id: string; name: string}) => {
     if (importLock.current || !files.length) return;
     importLock.current = true; setImportBusy(true); setImportTarget(target);
+    const controller=new AbortController();importController.current=controller;
     try {
-      await uploadInboxInBatches(files, target.id, setImportProgress);
+      await uploadInboxInBatches(files, target.id, setImportProgress,controller.signal);
     } finally {
+      importController.current=null;
       importLock.current = false; setImportBusy(false);
       refreshPipelineStatus();
     }
@@ -1106,8 +1132,6 @@ export default function App() {
     finally { transitionLock.current = false; setTransitioning(false); }
   };
 
-  if (error) return <div className="p-8 text-red-400">加载失败：{error}</div>;
-  if (!data) return <div className="p-8 text-zinc-500">加载中…</div>;
 
   const selectedPipeline: PipelineRunState | null = currentWork?.discussing ? null : currentWork?.stage && !["idle", "history"].includes(currentWork.phase) && !sending
     ? { stage: currentWork.stage, phase: currentWork.phase as PipelineRunState["phase"], label: currentWork.outcome === "ended" ? "已结束" : workPhaseLabel(currentWork.phase), detail: currentWork.detail, jobId: currentWork.id, steps: pipelineRun?.jobId === currentWork.id ? pipelineRun.steps : [], startedAt: pipelineRun?.jobId === currentWork.id ? pipelineRun.startedAt : Date.parse(currentWork.updated_at) }
@@ -1120,7 +1144,7 @@ export default function App() {
   } : workItems.some(item=>item.uno_job_id) ? null : pipelineRun);
 
   const messages = conv ? [...conv.messages, ...localMsgs] : localMsgs;
-  const cardTitles = Object.fromEntries(data.nodes.map((node) => [node.id, node.title]));
+  const cardTitles = Object.fromEntries((data?.nodes??[]).map((node) => [node.id, node.title]));
   const pipelineThreads = Object.fromEntries(
     projects.flatMap((project) => project.conversations)
       .filter((thread) => thread.pinned && thread.task_kind)
@@ -1133,6 +1157,7 @@ export default function App() {
   return (
     <div className={`app-shell${mobileNavigation ? " app-shell--navigation-open" : ""}${graphFocusMode ? " app-shell--graph-focus" : ""}${unoPanel ? " app-shell--construct-setup" : ""}`}>
       {importProgress && importTarget && <InboxImportStatus progress={importProgress} busy={importBusy} libraryName={importTarget.name}
+        onStop={()=>importController.current?.abort()}
         onRetry={() => void performImport(importProgress.failed.map(item => item.file), importTarget)} onClose={() => setImportProgress(null)} />}
 
       <header className="app-topbar">
@@ -1145,10 +1170,9 @@ export default function App() {
           <button className="app-topbar__tool" title="最近 30 次模型请求的提示词" aria-haspopup="dialog" onClick={() => setPromptInspectorOpen(true)}><span className="app-topbar__tool-icon" aria-hidden><ListChecks size={17} weight="duotone" /></span>提示词</button>
           {knowledgeInstances.instances.length ? <div className="instance-switcher">
             <select id="knowledge-instance" aria-label="知识实例" value={knowledgeInstances.active_instance_id ?? ""} disabled={switchingInstance || importBusy} onChange={(event) => void changeKnowledgeInstance(event.target.value).catch(() => {})}>
-              {knowledgeInstances.instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.name} · {instance.card_count} 卡</option>)}
+              {knowledgeInstances.instances.map((instance) => <option key={instance.id} value={instance.id} disabled={instance.status!==undefined&&instance.status!=='available'}>{instance.name} · {instance.status&&instance.status!=='available'?'不可用':`${instance.card_count??'未知'} 卡`}</option>)}
             </select>
             <InstanceManager value={knowledgeInstances} busy={switchingInstance || importBusy} onSwitch={changeKnowledgeInstance} onCreate={createManagedInstance} onRegister={registerManagedInstance} onRename={renameManagedInstance} onRemove={removeManagedInstance} />
-            {instanceError ? <span className="instance-switcher__error" role="status">{instanceError}</span> : null}
           </div> : null}
 
           <div className="overview-menu">
@@ -1221,6 +1245,11 @@ export default function App() {
           </div>
         </div>
       </header>
+      {(instanceError||storageNotice||(data?.snapshot_status&&data.snapshot_status!=='complete'))&&<section className="instance-recovery-notice" aria-label="读取与保存状态">
+        {instanceError&&<p role="status">{instanceError} <button disabled={switchingInstance} onClick={()=>void fetchKnowledgeInstances().then(value=>{if(value.active_instance_id)return changeKnowledgeInstance(value.active_instance_id);}).catch(error=>setInstanceError(String(error)))}>重新核对当前库</button></p>}
+        {storageNotice&&<p role="status">浏览器无法持久保存，当前页面仍保留记录；刷新前请复制未提交内容。</p>}
+        {data?.snapshot_status&&data.snapshot_status!=='complete'&&<p role="status">知识目录读取不完整（{data.diagnostics?.failures?.length??0} 项），当前只显示可用卡片；请检查原文件后重新核对当前库。</p>}
+      </section>}
       {promptInspectorOpen&&<Suspense fallback={null}><PromptInspector key={activeInstanceId} libraryName={knowledgeInstances.instances.find(instance=>instance.id===activeInstanceId)?.name??'当前知识库'} onClose={()=>setPromptInspectorOpen(false)}/></Suspense>}
       {!workConnected&&<div className="connection-notice" role="status">{workError??"正在连接后台并核对任务状态…"}</div>}
       <div className="app-workspace">
@@ -1248,7 +1277,7 @@ export default function App() {
         />
         <main className="graph-stage">
           <div className="graph-stage__canvas graph-vignette">
-            {data.nodes.length === 0
+            {!data ? <section role="status" className="p-8"><p>{error??'正在加载当前库图谱…'}</p><button onClick={()=>{setError(null);void fetchGraph().then(setData).catch(error=>setError(String(error)));}}>重试图谱</button></section> : data.nodes.length === 0
               ? <EmptyKnowledgeState onStartConversation={() => void newConversation()} />
               : <GraphCanvas data={data} engine={engine} viewKey={knowledgeInstances.active_instance_id ?? "legacy"} onNodeClick={openCard} activityTick={activityTick} onNarrationChange={setGraphNarration}
                 focusMode={graphFocusMode} onFocusModeChange={changeGraphFocusMode} />}

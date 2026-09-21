@@ -41,7 +41,7 @@ function listMarkdown(dir) {
 
 /** Load all active cards from 01-Cards/ (id-keyed). */
 function loadCards(root,options) {
-	return loadKnowledgeCards(root,options);
+	return loadKnowledgeCards(root,{...options,allowPartial:true});
 }
 
 /** Primary domain helper mirroring the original Python `_primary_domain`. */
@@ -50,11 +50,12 @@ function primaryDomain(domains) {
 }
 
 function relationshipIndex(cards, root) {
+	const targets = cards.relationTargets ?? cards;
 	const related = new Map([...cards.keys()].map((id) => [id, []]));
 	for (const [sourceId, card] of cards) {
 		const relations = Array.isArray(card.meta.relations) ? card.meta.relations : [];
 		for (const relation of relations) {
-			const targetId = typeof relation?.target === "string" ? (root ? resolveCardTarget(root,relation.target) : relation.target) : "";
+			const targetId = typeof relation?.target === "string" ? (root ? resolveCardTarget(root,relation.target,targets) : relation.target) : "";
 			if (!targetId || !cards.has(targetId)) continue;
 			const type = typeof relation?.type === "string" ? relation.type : "relation";
 			const note = typeof relation?.note === "string" ? relation.note : "";
@@ -179,6 +180,8 @@ export function buildCardCatalog(projectRoot, options = {}) {
 		items: items.map(({ _score, ...item }) => item),
 		total: items.length,
 		all_total: cards.size,
+		snapshot_status: cards.snapshotStatus,
+		diagnostics: cards.diagnostics,
 		facets: {
 			types: facetCounts(typeValues, value => CARD_TYPE_LABELS[value] ?? value),
 			domains: facetCounts(domainValues, titleOf),
@@ -196,6 +199,7 @@ export function buildCardCatalog(projectRoot, options = {}) {
  * @returns edges array (from/to/kind/relation_type/bundle/id).
  */
 function computeGraphEdges(root,cards) {
+	const targets = cards.relationTargets ?? cards;
 	const domainOf = new Map();
 	for (const [id, card] of cards) {
 		const domains = Array.isArray(card.meta.domains) ? card.meta.domains : [];
@@ -205,7 +209,7 @@ function computeGraphEdges(root,cards) {
 	for (const [id, card] of cards) {
 		const relations = Array.isArray(card.meta.relations) ? card.meta.relations : [];
 		for (const rel of relations) {
-			const target = typeof rel?.target === "string" ? resolveCardTarget(root,rel.target) : void 0;
+			const target = typeof rel?.target === "string" ? resolveCardTarget(root,rel.target,targets) : void 0;
 			if (!target || target === id || !cards.has(target)) continue;
 			const kind = typeof rel?.type === "string" ? rel.type : "relation";
 			edges.push({
@@ -245,6 +249,8 @@ export async function handleGraphGet(ctx, _req, res, _trustedHosts, projectRoot)
   edges.push(...buildDomainEdges(domainDocs));
 	const positions = await ensureLayoutAsync(projectRoot, nodes, edges);
 	json(res, 200, {
+		snapshot_status: cards.snapshotStatus,
+		diagnostics: cards.diagnostics,
 		layout_version: LAYOUT_VERSION,
 		nodes: nodes.map((n) => ({
 			...n,
@@ -282,6 +288,7 @@ export function buildGraphOverview(projectRoot) {
 	};
 	return {
 		node_count: nodeCount,
+		snapshot_status: cards.snapshotStatus,
 		edge_count: relationTotal,
 		domain_count: listDomainsV2(projectRoot).length,
 		entity_count: entityCount,

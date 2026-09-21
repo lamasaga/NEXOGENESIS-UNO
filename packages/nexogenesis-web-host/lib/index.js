@@ -128,7 +128,7 @@ function guarded(trustedHosts, csrfToken, fn, { instanceMutation = true } = {}) 
 			}
 			const status = error instanceof HttpError ? error.status : 500;
 			const message = error instanceof Error ? error.message : String(error);
-			json(res, status, { detail: message });
+			json(res, status, { detail: message, ...(typeof error?.code === 'string' ? {code:error.code} : {}) });
 		}
 	};
 }

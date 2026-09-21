@@ -21,6 +21,8 @@ const INSTANCE_DIRECTORIES = [
 ];
 const subscribers = new Set();
 let context = null;
+export function activeInstanceIdentity() { return context?.active?.id ?? null; }
+export function instanceSynchronizationReady() { return !context?.active?.warnings?.length; }
 
 function normalizeName(value) {
 	const name = typeof value === "string" ? value.trim() : "";
@@ -51,16 +53,26 @@ function readManifest(root) {
 }
 
 function normalizeRecord(record) {
-	const root = canonicalDirectory(record?.root);
-	const manifest = readManifest(root);
+	if (!record || !INSTANCE_ID.test(String(record.id ?? '')) || typeof record.root !== 'string' || !record.root.trim()) throw new Error('知识实例登记记录无效');
+	const registered = { id: record.id, name: normalizeName(record.name), root: resolve(record.root), legacy: record.legacy === true };
+	let root;
+	try { root = canonicalDirectory(registered.root); }
+	catch { return { ...registered, status: 'unavailable', reason: '目录不可访问，请重新连接或定位。' }; }
+	let manifest;
+	try { manifest = readManifest(root); }
+	catch { return { ...registered, status: 'invalid_manifest', reason: '实例清单无法读取或格式错误。' }; }
 	if (manifest) {
-		if (record.id !== manifest.id) throw new Error(`登记 id 与实例清单不一致：${record.id}`);
-		return manifest;
+		if (record.id !== manifest.id) return { ...registered, status: 'invalid_manifest', reason: '登记 ID 与实例清单不一致。' };
+		return { ...manifest, status: 'available' };
 	}
 	if (record?.legacy !== true || !INSTANCE_ID.test(String(record.id ?? ""))) {
-		throw new Error(`知识实例缺少 ${INSTANCE_MANIFEST}：${root}`);
+		return { ...registered, status: 'invalid_manifest', reason: '实例清单缺失。' };
 	}
-	return { id: String(record.id), name: normalizeName(record.name), root, legacy: true };
+	return { ...registered, root, status: 'available' };
+}
+
+function assertAvailable(instance) {
+	if (instance.status && instance.status !== 'available') throw Object.assign(new Error('知识实例不可用，请重新检查目录或清单。'), { code: 'INSTANCE_UNAVAILABLE' });
 }
 
 export function readInstanceRegistry(registryPath) {
@@ -117,7 +129,9 @@ export function ensureInstanceRegistry(registryPath, fallbackRoot) {
 
 function publish(next) {
 	context = next;
-	for (const subscriber of subscribers) subscriber(next.active);
+	const warnings = [];
+	for (const subscriber of subscribers) { try { subscriber(next.active); } catch { warnings.push('INSTANCE_SUBSCRIBER_FAILED'); } }
+	if (warnings.length) next.active.warnings = warnings;
 }
 
 export function configureInstanceContext({ registryPath, fallbackRoot }) {
@@ -125,6 +139,7 @@ export function configureInstanceContext({ registryPath, fallbackRoot }) {
 	const registry = ensureInstanceRegistry(resolvedRegistryPath, fallbackRoot);
 	const active = registry.instances.find((instance) => instance.id === registry.active_instance_id) ?? registry.instances[0];
 	if (!active) throw new Error(`没有已登记的知识实例：${registryPath}`);
+	assertAvailable(active);
 	if (registry.active_instance_id !== active.id) {
 		registry.active_instance_id = active.id;
 		persistRegistry(resolvedRegistryPath, registry);
@@ -148,6 +163,7 @@ export function activateKnowledgeInstance(registryPath, instanceId) {
 	const registry = readInstanceRegistry(registryPath);
 	const active = registry.instances.find((instance) => instance.id === instanceId);
 	if (!active) throw new Error(`知识实例不存在：${instanceId}`);
+	assertAvailable(active);
 	registry.active_instance_id = active.id;
 	persistRegistry(registryPath, registry);
 	publish({ registryPath, registry, active });
@@ -212,6 +228,7 @@ export function renameKnowledgeInstance(registryPath, instanceId, displayName) {
 	const registry = readInstanceRegistry(registryPath);
 	const instance = registry.instances.find((item) => item.id === instanceId);
 	if (!instance) throw new Error(`知识实例不存在：${instanceId}`);
+	assertAvailable(instance);
 	if (instance.legacy) {
 		instance.name = name;
 		persistRegistry(registryPath, registry);
@@ -237,7 +254,7 @@ export function unregisterKnowledgeInstance(registryPath, instanceId) {
 }
 
 export function instanceSummary(instance, activeId) {
-	let cardCount = 0;
-	try { cardCount = readdirSync(join(instance.root, "01-Cards"), { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md")).length; } catch { /* Empty or newly registered roots are valid. */ }
-	return { id: instance.id, name: instance.name, legacy: instance.legacy === true, active: instance.id === activeId, card_count: cardCount };
+	let cardCount = null;
+	try { if (!instance.status || instance.status === 'available') cardCount = readdirSync(join(instance.root, "01-Cards"), { withFileTypes: true }).filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".md")).length; } catch { /* Unavailable counts remain unknown. */ }
+	return { id: instance.id, name: instance.name, legacy: instance.legacy === true, active: instance.id === activeId, card_count: cardCount, status: instance.status ?? 'available', ...(instance.reason ? {reason: instance.reason} : {}), ...(instance.warnings ? {warnings: instance.warnings} : {}) };
 }

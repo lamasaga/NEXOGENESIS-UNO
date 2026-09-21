@@ -17,6 +17,8 @@ export interface GraphEdge {
 }
 
 export interface GraphData {
+  snapshot_status?: 'complete'|'partial'|'unavailable';
+  diagnostics?: {failures?:Array<{file:string;code:string}>};
   nodes: GraphNode[];
   edges: GraphEdge[];
 }
