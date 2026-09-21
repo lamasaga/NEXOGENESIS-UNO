@@ -7,14 +7,14 @@ import { BOOK_WORKFLOW, prepareBookSource, readBookUnit, saveBookCards, listBook
 import { sha, unoPath, unoRevision, unoMarkdown, readUnoReceipt } from '../packages/nexogenesis-tools/lib/harness/uno-storage.js';
 import { parseCardFile, invalidateKnowledgeSnapshot } from '../packages/nexogenesis-tools/lib/cards.js';
 
-function fixture(t, { text = '第一章\n\n甲😀乙，先描述前提，再说明作用机制。\n\n第二段给出例子与边界。', chapters, prepared: extra = {} } = {}) {
+function fixture(t, { text = '第一章\n\n甲😀乙，先描述前提，再说明作用机制。\n\n第二段给出例子与边界。', chapters, prepared: extra = {}, unit_char_limit } = {}) {
   const parent = realpathSync(tmpdir()), root = mkdtempSync(join(parent, 'uno-book-store-'));
   t.after(() => { assert.ok(resolve(root).startsWith(parent + sep)); rmSync(root, { recursive: true, force: true }); });
   mkdirSync(join(root, '00-Inbox')); mkdirSync(join(root, '.nexogenesis/uno-jobs'), { recursive: true });
   const source = '00-Inbox/合成图书.md'; writeFileSync(unoPath(root, source), text);
   const prepared = { fingerprint: sha(Buffer.from(text)), format: 'markdown', title: '合成图书',
     chapters: chapters ?? [{ title: '第一章', locator: '行 1–5', text }], warnings: [], ...extra };
-  const info = prepareBookSource(root, { source, prepared });
+  const info = prepareBookSource(root, { source, prepared, ...(unit_char_limit ? { unit_char_limit } : {}) });
   const job = { id: 'book-job', workflow: BOOK_WORKFLOW, status: 'running', session_id: 'session-a',
     sessions: ['session-a'], book_units: info.units, book_reads: {}, book_card_reads: {}, sources: [{ ...info, original_source: source }], book_outcomes: {} };
   const persist = () => writeFileSync(unoPath(root, '.nexogenesis/uno-jobs/book-job.json'), JSON.stringify(job));
@@ -271,6 +271,13 @@ test('explicit archive review preserves ended status and gap records while movin
   assert.equal(saved.status,'ended');assert.equal(saved.sources[0].incomplete,true);assert.equal(saved.archives[0].key,receipt.key);
   assert.equal(unoRevision(f.root,f.info.source_ref),f.info.source_revision);
   assert.deepEqual(archiveCompletedBook(f.root,{job_id:f.job.id,source:f.source}),receipt);
+});
+
+test('provider-aware extraction may freeze a 90000-character physical unit', t => {
+  const text='甲'.repeat(85000)+'\n\n'+'乙'.repeat(85000),f=fixture(t,{text,unit_char_limit:90000});
+  assert.equal(f.info.units.length,2);assert.ok(f.info.units.every(unit=>unit.chars<=90000&&unit.utf8_bytes<=360000));
+  const catalog=parseCardFile(unoPath(f.root,f.info.catalog_ref));assert.equal(catalog.meta.unit_segmentation.max_chars,90000);
+  assert.equal(f.info.units.map(unit=>parseCardFile(unoPath(f.root,unit.ref)).body).join(''),text);
 });
 
 test('archive review cannot bypass unfinished units or authorize a running task', t => {

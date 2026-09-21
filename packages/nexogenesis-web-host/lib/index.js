@@ -27,7 +27,7 @@ import { registerModelAdapter } from "./model-adapter.js";
 import { registerUnoSessionEvents } from "./session-events.js";
 import { registerPromptInspector, handlePromptInspector } from './prompt-inspector.js';
 import {
-	handleConversationCreate, handleConversationDelete, handleConversationGet,
+	handleConversationCreate, handleConversationDelete, handleConversationGet, handleConversationHistoryGet,
 	handleConversationPatch, handleProjectsGet, handleProjectsPost
 } from "./projects.js";
 import { handleChat, handleChatCancel, handleChatStream } from "./chat.js";
@@ -37,7 +37,7 @@ import { LAYOUT_VERSION } from "./layout.js";
 import { handleEventsGet, handlePipelineConversation, handlePipelineConversationReset, handlePipelineJob,
 	handlePipelineStatus, handlePipelineStop } from "./pipeline.js";
 import { handleConstructPrepare } from "./construct.js";
-import { cancelUnoShutdown, handleUnoApi, hasAnyUnoJobRunning, prepareUnoShutdown, unoShutdownPrepared } from "./uno-jobs.js";
+import { cancelUnoShutdown, handleUnoApi, hasAnyUnoJobRunning, prepareUnoShutdown, recoverInterruptedUnoJobs, unoShutdownPrepared } from "./uno-jobs.js";
 import { COMPILE_HEALTH } from "./book-compile.js";
 import { STRATEGY_CONSTRUCTION_PROFILE, STRATEGY_CONSTRUCTION_WORKFLOW, CONSTRUCTION_STRATEGY_CONTRACT,
 	CONSTRUCTION_REVIEW_POLICY } from '../../nexogenesis-tools/lib/uno/construction-strategy.js';
@@ -142,7 +142,9 @@ function guarded(trustedHosts, csrfToken, fn, { instanceMutation = true } = {}) 
  * @param projectRoot - normalized session working directory.
  */
 function mountRoutes(ctx, config, projectRoot) {
-	ctx.effect(() => subscribeActiveInstance((instance) => { projectRoot = instance.root; }));
+	const recoverJobs=root=>{for(const error of recoverInterruptedUnoJobs(root).errors)console.error(`nexogenesis: 无法恢复任务文件 ${error.file}: ${error.detail}`);};
+	recoverJobs(projectRoot);
+	ctx.effect(() => subscribeActiveInstance((instance) => { projectRoot = instance.root; recoverJobs(projectRoot); }));
 	ctx.effect(() => registerPromptInspector(ctx, () => projectRoot));
 	ctx.inject(["apiProxy"], (workCtx) => workCtx.effect(() => observeWork(workCtx, () => projectRoot)));
 	const csrfToken = randomBytes(32).toString("base64url");
@@ -308,8 +310,14 @@ function mountRoutes(ctx, config, projectRoot) {
 				await handleConversationCreate(ctx, req, res, config.trustedHosts, projectRoot);
 				return;
 			}
-			if (rest.startsWith("/")) {
-				const id = decodeURIComponent(rest.slice(1));
+			const history = /^\/([^/]+)\/history\/?$/.exec(rest);
+			if (req.method === "GET" && history) {
+				await handleConversationHistoryGet(ctx, req, res, config.trustedHosts, decodeURIComponent(history[1]), projectRoot);
+				return;
+			}
+			const conversation = /^\/([^/]+)\/?$/.exec(rest);
+			if (conversation) {
+				const id = decodeURIComponent(conversation[1]);
 				if (req.method === "GET") await handleConversationGet(ctx, req, res, config.trustedHosts, id, projectRoot);
 				else if (req.method === "PATCH") await handleConversationPatch(ctx, req, res, config.trustedHosts, id);
 				else if (req.method === "DELETE") await handleConversationDelete(ctx, req, res, config.trustedHosts, id, projectRoot);
@@ -568,7 +576,7 @@ async function apply(ctx, config) {
 		});
 	});
 	registerModelAdapter(ctx);
-	mountRoutes(ctx, config, projectRoot);
+	mountRoutes(ctx,{...config,trustedHosts:runtime.trustedHosts},projectRoot);
 	if (config.surfaceContext) {
 		ctx.inject(["systemPrompt"], (promptCtx) => {
 			promptCtx.systemPrompt.section({

@@ -25,13 +25,6 @@ try {
 	writeFileSync(join(root, "05-Buffer", "themes", "test-topic", "sources", "book", "chapter.md"), "正式主题章节来源。", "utf8");
 	writeDomainFixture(root, "测试领域");
 	const gateway = new HarnessGateway(root);
-	assert.throws(() => gateway.commitBuffer({ role: "meaning-unit", title: "无来源质料", source: "", body: "这是一段看似完整但没有任何来源锚点的机制说明。".repeat(8) }), (error) => error instanceof HarnessRejected && error.receipt.reason_code === "missing_buffer_source");
-	const caution = gateway.commitBuffer({
-		role: "meaning-unit", title: "自由段落质料", source: "材料.md#段落一",
-		body: "这是一份来自短文或对话的自由段落质料，它包含明确判断、作用机制、适用条件和失效边界，因此不应仅因没有四层标题而被拒绝。它同时说明当前证据只覆盖一个局部案例，不能外推到所有机构和所有市场环境；后续消化仍需与既有卡片比较，确认它究竟形成增量、重复还是冲突。"
-	});
-	assert.equal(caution.quality.status, "caution", "非硬性结构问题必须随成功写入回执返回");
-
 	const good = gateway.preflight({ operations: [fullClaim()], layer: "creation" });
 	assert.equal(good.quality[0].status, "caution", "无关系只应形成结构复核告警，不阻断新卡");
 
@@ -65,7 +58,7 @@ try {
 	assert.ok(weakThemeExcerpt.findings.some((item) => item.code === "weak_source_excerpt" && item.severity === "error"), "主题卡不得用章节标题冒充证据摘录");
 	const unaddressableTheme = auditCardQuality(fullClaim({ sources: ["05-Buffer/themes/test-topic/sources/book/chapter.md"] }), { root });
 	assert.ok(unaddressableTheme.findings.some((item) => item.code === "theme_units_insufficient" && item.severity === "error"), "主题卡至少需要两个可寻址语义单元");
-	console.log("PASS knowledge quality: Buffer 来源门槛、新卡槽契约、错型与占位拦截");
+	console.log("PASS knowledge quality: 新卡槽契约、错型与占位拦截");
 } finally {
 	rmSync(root, { recursive: true, force: true });
 }

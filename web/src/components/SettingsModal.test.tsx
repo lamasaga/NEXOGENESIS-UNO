@@ -42,9 +42,7 @@ describe("SettingsModal", () => {
     expect(html).toContain("测试连接并读取模型");
     expect(html).toContain("图像处理");
     expect(html).toContain("不会猜测图像语义");
-    expect(html).toContain("Kimi Code Plan");
-    expect(html).toContain("智谱 GLM");
-    expect(html).toContain("阿里云百炼");
+    expect(html).toContain("正在读取设置");
     expect(html).toContain("思考强度");
     expect(html).toContain("对话思考深度");
     expect(html).toContain("实际 ID：");

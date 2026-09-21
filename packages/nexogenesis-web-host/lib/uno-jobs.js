@@ -2,14 +2,14 @@ import {CONSTRUCTION_CONTROLS,CONSTRUCTION_OPERATIONS,validateConstructionContro
 import { selectionSummary } from '../../nexogenesis-tools/lib/uno/history.js';
 import { resumeUnfinishedBatch } from '../../nexogenesis-tools/lib/uno/recovery.js';
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { loadCards, listInbox, invalidateKnowledgeSnapshot } from "../../nexogenesis-tools/lib/cards.js";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { loadCards, listInbox } from "../../nexogenesis-tools/lib/cards.js";
 import { displayType, safeId } from "../../nexogenesis-tools/lib/uno-contract.js";
 import { CARD_CLASSIFICATION_CONTRACT, CARD_TYPES, CARD_TYPE_LABELS, domainCatalogRows } from '../../nexogenesis-tools/lib/uno/card-classification.js';
 import { listDomainsV2 } from '../../nexogenesis-tools/lib/uno/knowledge.js';
 import { sha, readUnoReceipt, readUnoUnit, unoPath, unoRevision } from "../../nexogenesis-tools/lib/harness/uno-storage.js";
-import { pipelineAuthorityOf, workflowModelSelectionFromSettings } from "./settings.js";
+import { ensureModelRoute, pipelineAuthorityOf, workflowModelSelectionFromSettings } from "./settings.js";
 import { ensureDefaultProject, patchConversationExt, conversationExt } from "./meta.js";
 import { isQuickThinkingRunning } from './quick-thinking.js';
 import { HttpError, json, readJsonBody, rpcCall } from "./rpc.js";
@@ -38,6 +38,7 @@ import { prepareIsolationRepair, bindIsolationRepair } from '../../nexogenesis-t
 import { HarnessGateway } from '../../nexogenesis-tools/lib/harness/gateway.js';
 import { BOOK_ASSET_REF } from '../../nexogenesis-tools/lib/uno/book-paths.js';
 import { bookEvidencePath } from '../../nexogenesis-tools/lib/uno/book-evidence.js';
+import { saveCompileJob } from '../../nexogenesis-tools/lib/uno/state.js';
 import { SINGLE_CARD_RECOMPILE_CONTRACT } from './single-card-recompile.js';
 import { CONSTRUCTION_JSON_TAIL_RECOVERY, CONSTRUCTION_RESPONSE_RECOVERY_CONTRACT } from './construction-request.js';
 
@@ -113,28 +114,39 @@ const jobRef = id => {
   return ".nexogenesis/uno-jobs/" + id + ".json";
 };
 function save(root, job) {
-  job.updated_at = new Date().toISOString(); job.version = (job.version ?? 0) + 1;
-  const path = unoPath(root, jobRef(job.id)); mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path + ".tmp", JSON.stringify(job)); renameSync(path + ".tmp", path);
+  try { return saveCompileJob(root,job,{expectedVersion:job.version}); }
+  catch(error){if(error?.code==='UNO_JOB_VERSION_CONFLICT')throw new HttpError(409,error.message);throw error;}
 }
 export function readUnoJob(root, id) {
   const file = unoPath(root, jobRef(id));
   if (!existsSync(file)) throw new HttpError(404, "任务不存在。");
   const job = JSON.parse(readFileSync(file, "utf8"));
-  if (job.end_requested && job.status !== "ended" && !active.has(job.id)) return finishEndedJob(root, job);
-  if (job.status === "running" && !active.has(job.id)) {
-    const interruptedAt = new Date().toISOString();
-    for (const call of job.calls ?? []) if (call.status === 'running') {
-      call.status = 'interrupted'; call.finished_at ??= interruptedAt;
-      call.error ??= '服务进程在模型响应完成前退出；未收到的响应不计入成果。';
-    }
-    job.status = "paused";
-    job.detail = isCurrentUnoJob(job) ? "上次执行已中断；未完成请求不计入成果，继续时从当前检查点恢复。" : "旧执行流程已退役，历史进度与已有成果保留；请从当前入口新建任务。";
-    save(root, job);
-  }
   if(job.orchestration_profile==='bounded-workflow-v1')try{job.provider_budget=getProviderBudget(root,id);}catch{job.provider_budget={available:false,message:'请求预算记录不可用；执行前需要恢复，不能按零消费继续。'};}
   if (isBookWorkflow(job.workflow) && job.phase === 'done' && ['partial','completed'].includes(job.status)) completeBookState(job);
   return job;
+}
+export function recoverInterruptedUnoJobs(root) {
+  const dir=unoPath(root,'.nexogenesis/uno-jobs'),result={recovered:0,ended:0,errors:[]};
+  if(!existsSync(dir))return result;
+  for(const name of readdirSync(dir).filter(file=>file.endsWith('.json'))){
+    try{
+      const job=JSON.parse(readFileSync(unoPath(root,'.nexogenesis/uno-jobs/'+name),'utf8'));
+      if(active.has(job.id))continue;
+      if(job.end_requested&&job.status!=='ended'){finishEndedJob(root,job);result.ended++;continue;}
+      if(job.status!=='running')continue;
+      const interruptedAt=new Date().toISOString();
+      for(const call of job.calls??[])if(call.status==='running'){
+        call.status='interrupted';call.finished_at??=interruptedAt;
+        call.error??='服务进程在模型响应完成前退出；未收到的响应不计入成果。';
+      }
+      job.status='paused';
+      job.detail=isCurrentUnoJob(job)?'上次执行已中断；未完成请求不计入成果，继续时从当前检查点恢复。':'旧执行流程已退役，历史进度与已有成果保留；请从当前入口新建任务。';
+      save(root,job);result.recovered++;
+    }catch(error){
+      result.errors.push({file:name,detail:error instanceof Error?error.message:String(error)});
+    }
+  }
+  return result;
 }
 function inboxCompilationInventory(root, jobs) {
   const inbox = listInbox(root), ordered = [...jobs].sort((a,b) => String(b.updated_at??b.created_at??'').localeCompare(String(a.updated_at??a.created_at??'')));
@@ -165,7 +177,6 @@ function inboxCompilationInventory(root, jobs) {
   return {sources,archived_sources};
 }
 export function unoPreparation(ctx, root) {
-  invalidateKnowledgeSnapshot(root);
   const cards = [...loadCards(root)].filter(([,c]) => c.meta.type !== "domain").map(([id,c]) => ({ id, title: c.meta.title ?? id,
     type: displayType(c.meta), domains: Array.isArray(c.meta.domains) ? c.meta.domains : [] }));
   const domains = domainCatalogRows(listDomainsV2(root));
@@ -178,12 +189,16 @@ export function unoPreparation(ctx, root) {
   const jobs = [...jobRecords].sort((a,b) => String(b.updated_at??'').localeCompare(String(a.updated_at??''))).slice(0,20)
     .map(j => ({ id: j.id, mode: j.mode, title: j.title, status: j.status, updated_at: j.updated_at }));
   const inbox=inboxCompilationInventory(root,jobRecords);
-  const registry=currentInstanceRegistry(root),library=registry.instances.find(i=>resolve(i.root)===resolve(root));
+  const library=currentLibrary(root);
   // Historical Buffer is not an input queue for the new compiler. Opening the
   // picker must not traverse thousands of old intermediary files.
   const pending_materials=[];
   let construction_model={available:true};try{assertBoundedModel({orchestration_profile:'bounded-workflow-v1'},workflowModelSelectionFromSettings(ctx.settings?.get('nexogenesis')??{},'construct').selection,ctx);}catch(e){construction_model={available:false,message:e.message};}
-  return { cards, types, domains, card_classification:CARD_CLASSIFICATION_CONTRACT, domain_governance:{contract:'domain-governance-v1',unassigned_count:unassignedCount,pending_proposals:Object.values(domainState.proposals).filter(row=>row.status==='proposed').length}, sources:inbox.sources,archived_sources:inbox.archived_sources,pending_materials, library:{id:library?.id??null,name:library?.name??'当前知识库'}, preferences:readPreferences(root),authority: pipelineAuthorityOf(ctx), jobs, construct_contract:'scoped-review-v1', construct_scope:'type-and-domain-v1', construction_controls:{contract:CONSTRUCTION_CONTROLS,operations:CONSTRUCTION_OPERATIONS.map(o=>o.id)},construction_profiles:[STRATEGY_CONSTRUCTION_PROFILE,CONSTRUCTION_PROFILE],default_construction_profile:STRATEGY_CONSTRUCTION_PROFILE,construction_strategy_contract:CONSTRUCTION_STRATEGY_CONTRACT,construction_review_policy:CONSTRUCTION_REVIEW_POLICY,construction_repair_scope:CONSTRUCTION_REPAIR_SCOPE_CONTRACT,relation_weaving_contract:RELATION_WEAVING_CONTRACT,relation_weaving_focus_selection:RELATION_WEAVING_FOCUS_SELECTION,relation_weaving_endpoint_retrieval:RELATION_WEAVING_ENDPOINT_RETRIEVAL,relation_weaving_max_focus_attempts:RELATION_WEAVING_MAX_FOCUS_ATTEMPTS,construction_json_recovery:CONSTRUCTION_JSON_TAIL_RECOVERY,construction_response_recovery:CONSTRUCTION_RESPONSE_RECOVERY_CONTRACT,uno_construction_service:1,uno_relation_weaving:1,construction_model,compile_profile:DEFAULT_COMPILE_PROFILE,compile_review_policy:DEFAULT_COMPILE_REVIEW_POLICY,compile_review_policies:[DEFAULT_COMPILE_REVIEW_POLICY],compile_card_refinement:COMPILE_QUALITY_REFINE_EACH_CARD,compile_quality_modes:COMPILE_QUALITY_MODES,domain_approval_modes:['manual','automatic'],compile_model:{...construction_model},execution_profiles:[EVIDENCE_PACK_PROFILE], orchestration_profiles:['bounded-workflow-v1'], compile_version:BOOK_WORKFLOW, compile_hints:COMPILE_HINTS };
+  return { cards, types, domains, card_classification:CARD_CLASSIFICATION_CONTRACT, domain_governance:{contract:'domain-governance-v1',unassigned_count:unassignedCount,pending_proposals:Object.values(domainState.proposals).filter(row=>row.status==='proposed').length}, sources:inbox.sources,archived_sources:inbox.archived_sources,pending_materials, library, preferences:readPreferences(root),authority: pipelineAuthorityOf(ctx), jobs, construct_contract:'scoped-review-v1', construct_scope:'type-and-domain-v1', construction_controls:{contract:CONSTRUCTION_CONTROLS,operations:CONSTRUCTION_OPERATIONS.map(o=>o.id)},construction_profiles:[STRATEGY_CONSTRUCTION_PROFILE,CONSTRUCTION_PROFILE],default_construction_profile:STRATEGY_CONSTRUCTION_PROFILE,construction_strategy_contract:CONSTRUCTION_STRATEGY_CONTRACT,construction_review_policy:CONSTRUCTION_REVIEW_POLICY,construction_repair_scope:CONSTRUCTION_REPAIR_SCOPE_CONTRACT,relation_weaving_contract:RELATION_WEAVING_CONTRACT,relation_weaving_focus_selection:RELATION_WEAVING_FOCUS_SELECTION,relation_weaving_endpoint_retrieval:RELATION_WEAVING_ENDPOINT_RETRIEVAL,relation_weaving_max_focus_attempts:RELATION_WEAVING_MAX_FOCUS_ATTEMPTS,construction_json_recovery:CONSTRUCTION_JSON_TAIL_RECOVERY,construction_response_recovery:CONSTRUCTION_RESPONSE_RECOVERY_CONTRACT,uno_construction_service:1,uno_relation_weaving:1,construction_model,compile_profile:DEFAULT_COMPILE_PROFILE,compile_review_policy:DEFAULT_COMPILE_REVIEW_POLICY,compile_review_policies:[DEFAULT_COMPILE_REVIEW_POLICY],compile_card_refinement:COMPILE_QUALITY_REFINE_EACH_CARD,compile_quality_modes:COMPILE_QUALITY_MODES,domain_approval_modes:['manual','automatic'],compile_model:{...construction_model},execution_profiles:[EVIDENCE_PACK_PROFILE], orchestration_profiles:['bounded-workflow-v1'], compile_version:BOOK_WORKFLOW, compile_hints:COMPILE_HINTS };
+}
+function currentLibrary(root){
+  const registry=currentInstanceRegistry(root),library=registry.instances.find(instance=>resolve(instance.root)===resolve(root));
+  return {id:library?.id??null,name:library?.name??'当前知识库'};
 }
 // Persisted historical jobs remain readable; only the two current execution
 // contracts may create model requests or publish changes.
@@ -197,6 +212,36 @@ export async function executeUnoJob(ctx, root, job, controller) {
   if (isStrategyConstruction(job)) return executeStrategyConstruction(ctx, root, job, controller);
   return executeConstruction(ctx, root, job, controller);
 }
+async function superviseUnoExecution(ctx,root,job,controller,execution) {
+  try {
+    await executeUnoJob(ctx,root,job,controller);
+  } catch(error) {
+    try {
+      const current=readUnoJob(root,job.id);
+      if(current.end_requested) return;
+      if(current.pause_requested||controller.signal.aborted||error?.code==='UNO_JOB_VERSION_CONFLICT'){
+        current.status='paused';
+        current.detail=error?.code==='UNO_JOB_VERSION_CONFLICT'
+          ?'任务状态在执行期间发生变化，当前执行已安全暂停；刷新后可从已保存检查点继续。'
+          :(current.detail||'任务已暂停，尚未确认的内容保留。');
+      } else {
+        current.status='failed';current.detail=error instanceof Error?error.message:String(error);
+      }
+      save(root,current);
+    } catch(persistError) {
+      console.error('nexogenesis: UNO 后台任务失败状态无法保存',persistError);
+    }
+  } finally {
+    try {
+      const current=readUnoJob(root,job.id);
+      if(execution.endRequested||current.end_requested)finishEndedJob(root,current);
+    } catch(settleError) {
+      console.error('nexogenesis: UNO 后台任务结束状态无法结算',settleError);
+    } finally {
+      active.delete(job.id);
+    }
+  }
+}
 export function launch(ctx, root, job) {
   if (!isCurrentUnoJob(job)) throw new HttpError(409, historicalMessage);
   if (unoJobEnded(job) || job.end_requested) throw new HttpError(409, "本次任务已经结束，请新建任务处理剩余材料。");
@@ -204,15 +249,10 @@ export function launch(ctx, root, job) {
   if (hasUnoJobRunning(root)) throw new HttpError(409, "当前知识体已有编译或建构正在处理，请先暂停。");
   if (isQuickThinkingRunning(job.owner_session_id ?? job.session_id)) throw new HttpError(409,'请先等待讨论结束或暂停回答，再恢复工作。');
   const controller = new AbortController(); active.set(job.id, { root: resolve(root), sessionId: job.session_id, controller });
-  job.status = "running"; job.pause_requested=false; save(root, job);
+  job.status = "running"; job.pause_requested=false; saveCompileJob(root,job,{expectedVersion:job.version,resetControls:true});
   patchConversationExt(job.owner_session_id ?? job.session_id,{uno_discussing:false});
   const execution = active.get(job.id);
-  void executeUnoJob(ctx, root, job, controller).catch(e => {
-    const current = readUnoJob(root, job.id); current.status = "failed"; current.detail = e.message; save(root,current);
-  }).finally(() => {
-    try { const current = readUnoJob(root, job.id); if (execution.endRequested || current.end_requested) finishEndedJob(root, current); }
-    finally { active.delete(job.id); }
-  });
+  void superviseUnoExecution(ctx,root,job,controller,execution);
 }
 export async function startUnoJob(ctx, root, input, appRoot=root) {
   if (shutdownPrepared) throw new HttpError(503, "服务正在准备停止或重启，不能创建新的编译或建构任务。");
@@ -274,6 +314,7 @@ async function createUnoJob(ctx, root, input, appRoot=root,requestId,requestHash
   }
   if(input.orchestration_profile==='bounded-workflow-v1'&&input.mode==='construct'&&((input.construction_profile!==STRATEGY_CONSTRUCTION_PROFILE&&(!Array.isArray(input.card_ids)||!input.card_ids.length))||typeof input.notes!=='string'||!input.notes.trim()))throw new HttpError(400,'新版自由建构只需说明改善方向；历史有界任务仍须明确选定卡片。');
   let modelSettings={};try{modelSettings=ctx.settings.get('nexogenesis')??{};}catch{}
+  await ensureModelRoute(ctx,modelSettings);
   const workflowModel=workflowModelSelectionFromSettings(modelSettings,input.mode);
   const modelSelection=workflowModel.selection;assertBoundedModel(input,modelSelection,ctx);
   if (hasUnoJobRunning(root)) throw new HttpError(409, "请先暂停当前编译或建构。");
@@ -337,7 +378,8 @@ async function createUnoJob(ctx, root, input, appRoot=root,requestId,requestHash
     job.title='单卡领域整理 · '+inventory.cards.find(card=>card.id===job.scope[0]).title;
   }
   Object.assign(job,{requirements,continuous:isBookWorkflow(job.workflow)||job.workflow===STRATEGY_CONSTRUCTION_WORKFLOW?input.continuous!==false:input.continuous===true,batch_index:0,role:job.workflow===STRATEGY_CONSTRUCTION_WORKFLOW?'select':'author',model_selection:modelSelection,
-    ...(input.mode==='compile'?{workflow_reasoning:workflowModel.reasoning}:{}),project_id:ensureDefaultProject().id,library_id:inventory.library.id});
+    ...(input.mode==='compile'?{workflow_reasoning:workflowModel.reasoning}:{}),workflow_limits:workflowModel.limits,
+    project_id:ensureDefaultProject().id,library_id:inventory.library.id});
   const created = await rpcCall(ctx, "session.create", { cwd: root, agentPreset: 'uno-compile' }); job.session_id = created.sessionId;job.owner_session_id=job.session_id;job.sessions=[job.session_id];
   await rpcCall(ctx,'session.rename',{sessionId:job.session_id,title:job.title});
   const taskPinned=!isUnoFocusedMaintenanceJob(job);
@@ -365,9 +407,9 @@ function publicUnoJob(root,job){
 }
 export async function handleUnoApi(ctx, req, res, root,appRoot=root) {
   const url = new URL(req.url, "http://local"), rest = url.pathname.slice("/api/uno".length);
-  if(rest==='/preferences'&&req.method==='GET')return json(res,200,{...readPreferences(root),construction_controls_contract:CONSTRUCTION_CONTROLS,library:unoPreparation(ctx,root).library});
+  if(rest==='/preferences'&&req.method==='GET')return json(res,200,{...readPreferences(root),construction_controls_contract:CONSTRUCTION_CONTROLS,library:currentLibrary(root)});
   if(rest==='/preferences'&&req.method==='PUT'){
-    const body=await readJsonBody(req),library=unoPreparation(ctx,root).library;
+    const body=await readJsonBody(req),library=currentLibrary(root);
     if(body.library_id!==library.id)throw new HttpError(409,'当前知识库已经切换，请重新加载设置');
     let model='';try{model=ctx.settings.get('nexogenesis')?.model??'';}catch{}
     const usage=await countPreferences(longTermPreferenceText({...readPreferences(root),...body}),model,appRoot);if(usage.tokens>3000)throw new HttpError(400,`编译偏好${usage.exact?'':'估计'}超过 3000 tokens，请精简`);
@@ -386,13 +428,13 @@ export async function handleUnoApi(ctx, req, res, root,appRoot=root) {
     res.setHeader('Content-Type',mime);res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Content-Security-Policy',"sandbox; default-src 'none'");if(mime==='application/octet-stream')res.setHeader('Content-Disposition','attachment');res.statusCode=200;res.end(readFileSync(path));return;
   }
   if (rest === "/prepare" && req.method === "GET") return json(res,200,unoPreparation(ctx,root));
-  if(rest==='/unassigned'&&req.method==='GET')return json(res,200,{items:[...listCompileIsolation(root),...listUnassignedCards(root).map(card=>({...card,kind:'unassigned'}))],library:unoPreparation(ctx,root).library,capabilities:{manual_seed_domain:true}});
+  if(rest==='/unassigned'&&req.method==='GET')return json(res,200,{items:[...listCompileIsolation(root),...listUnassignedCards(root).map(card=>({...card,kind:'unassigned'}))],library:currentLibrary(root),capabilities:{manual_seed_domain:true}});
   const repairMatch=/^\/repairs\/([a-zA-Z0-9_-]+)$/.exec(rest);
   if(repairMatch&&req.method==='GET')return json(res,200,findCompileIsolation(root,repairMatch[1]));
   if(repairMatch&&req.method==='POST'){
     const body=await readJsonBody(req);
     if(typeof body.request_id!=='string')throw new HttpError(400,'修复请求需要幂等标识，请刷新后重试。');
-    if(body.library_id!==unoPreparation(ctx,root).library.id)throw new HttpError(409,'当前知识库已切换，请刷新待修复项。');
+    if(body.library_id!==currentLibrary(root).id)throw new HttpError(409,'当前知识库已切换，请刷新待修复项。');
     try{return json(res,202,publicUnoJob(root,await startUnoJob(ctx,root,{mode:'compile',operation:'isolated-card-repair',compile_profile:BOOK_PROFILE,
       item_id:repairMatch[1],expected_revision:body.expected_revision,notes:body.notes??'',response_json:body.response_json??'',
       library_id:body.library_id,request_id:body.request_id,budget_calls:12,inherit_preferences:false},appRoot)));}
@@ -413,7 +455,7 @@ export async function handleUnoApi(ctx, req, res, root,appRoot=root) {
   }
   if(unassignedMatch&&req.method==='POST'&&unassignedMatch[2]==='create-domain'){
     if(hasUnoJobRunning(root))throw new HttpError(409,'请先暂停当前编译或建构，再创建领域。');
-    const body=await readJsonBody(req),library=unoPreparation(ctx,root).library;
+    const body=await readJsonBody(req),library=currentLibrary(root);
     if(body.library_id!==library.id)throw new HttpError(409,'当前知识库已切换，请重新打开未组织池。');
     if(!safeId(body.request_id))throw new HttpError(400,'创建领域需要有效的幂等请求标识，请刷新后重试。');
     try{return json(res,200,new HarnessGateway(root).createDomainFromUnassignedCard({key:`domain-governance/manual/${unassignedMatch[1]}/${body.request_id}`,
@@ -422,7 +464,7 @@ export async function handleUnoApi(ctx, req, res, root,appRoot=root) {
   }
   if(unassignedMatch&&req.method==='DELETE'&&!unassignedMatch[2]){
     if(hasUnoJobRunning(root))throw new HttpError(409,'请先暂停当前编译或建构，再删除卡片。');
-    const body=await readJsonBody(req),library=unoPreparation(ctx,root).library;
+    const body=await readJsonBody(req),library=currentLibrary(root);
     if(body.library_id!==library.id)throw new HttpError(409,'当前知识库已切换，请重新打开未组织池。');
     try{return json(res,200,new HarnessGateway(root).deleteUnassignedCard({key:`unassigned-delete/${unassignedMatch[1]}/${body.expected_revision}`,card_id:unassignedMatch[1],expected_revision:body.expected_revision,confirm_id:body.confirm_id,reason:body.reason}));}
     catch(error){throw new HttpError(error.code==='REVISION_CONFLICT'?409:400,error.message);}
@@ -446,6 +488,7 @@ export async function handleUnoApi(ctx, req, res, root,appRoot=root) {
   }
   if (req.method !== "POST") throw new HttpError(405, "method not allowed");
   const action = match[2], body = await readJsonBody(req);
+  job = readUnoJob(root, match[1]);
   if (!isCurrentUnoJob(job) && !['end','cancel'].includes(action)) throw new HttpError(409, historicalMessage);
   if (action !== 'end' || job.status !== 'ended') assertUnoVersion(job,body);
   if (action === 'end') return json(res, 202, publicUnoJob(root,endUnoJob(root, job.id)));
@@ -475,6 +518,7 @@ export async function handleUnoApi(ctx, req, res, root,appRoot=root) {
   if (isQuickThinkingRunning(job.owner_session_id??job.session_id)) throw new HttpError(409,'请等待讨论结束，再恢复工作。');
   if([CONSTRUCTION_WORKFLOW,STRATEGY_CONSTRUCTION_WORKFLOW].includes(job.workflow)&&['resume','retry'].includes(action))assertBoundedModel(job,job.model_selection,ctx);
   if (((await rpcCall(ctx,"session.list",{})).items??[]).some(s=>s.running && (job.sessions?.includes(s.sessionId) || (conversationExt(s.sessionId).task_kind && !conversationExt(s.sessionId).uno_job_id)))) throw new HttpError(409,"请先暂停正在执行的原任务。");
+  job = readUnoJob(root, match[1]);
   if (body.version !== job.version) throw new HttpError(409, "任务状态已变化，请刷新后重试。");
   if(job.workflow===BOOK_WORKFLOW){
     if(action==='domain-review'){

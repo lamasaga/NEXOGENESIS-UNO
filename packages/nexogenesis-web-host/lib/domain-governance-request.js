@@ -1,5 +1,6 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { chars } from './unit-card-request.js';
+import { workflowCharLimit, workflowOutputLimit, workflowReasoning } from './workflow-limits.js';
 
 const user = text => createUserMessage({ source:{ kind:'user' }, content:[{ type:'text', text }] });
 
@@ -17,16 +18,17 @@ assignments 只能选择该卡 candidate_domain_ids 中的 1–3 个既有领域
 
 export function buildDomainGovernanceRequest(job, pack) {
   const payload = structuredClone(pack);
+  const limit=workflowCharLimit(job,'context_chars',60000);
   let text = '本次未组织卡、正式领域目录及版本快照：\n' + JSON.stringify(payload), total = chars(SYSTEM) + chars(text);
-  if (total > 60000) {
+  if (total > limit) {
     for (const card of payload.cards.toReversed()) {
       if (!Object.hasOwn(card, 'body')) continue;
       delete card.body; card.delivery = 'summary';
       text = '本次未组织卡、正式领域目录及版本快照：\n' + JSON.stringify(payload); total = chars(SYSTEM) + chars(text);
-      if (total <= 60000) break;
+      if (total <= limit) break;
     }
   }
-  if (total > 60000) throw Object.assign(new Error(`领域治理上下文 ${total}/60000 字符；未截断或发送。`), { code:'DOMAIN_CONTEXT_LIMIT' });
-  return { ...job.model_selection, reasoningEffort:job.workflow_reasoning?.domain ?? 'low', system:SYSTEM, messages:[user(text)], tools:[], maxTokens:32768,
+  if (total > limit) throw Object.assign(new Error(`领域治理上下文 ${total}/${limit} 字符；未截断或发送。`), { code:'DOMAIN_CONTEXT_LIMIT' });
+  const effort=workflowReasoning(job,'domain','low');return { ...job.model_selection, ...(effort?{reasoningEffort:effort}:{}), system:SYSTEM, messages:[user(text)], tools:[], maxTokens:workflowOutputLimit(job,'domain',32768),
     nexoPrompt:{phase:'domain-governance'}, unit_context:{source_chars:0,other_chars:total} };
 }

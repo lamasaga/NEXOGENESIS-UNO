@@ -52,7 +52,7 @@ test("Web 图谱投影复用同一知识快照", () => {
 		assert.equal(buildGraphOverview(root).node_count, 2);
 		const stats = knowledgeSnapshotStats(root);
 		assert.equal(stats.scans, 1, "Web 图谱不能维持第二套逐文件扫描路径");
-		assert.ok(stats.hits >= 3, "同一次和重复图谱投影都应复用快照");
+		assert.equal(stats.hits,1,"重复图谱投影只需命中一次卡片快照，关系索引由同一版本复用");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

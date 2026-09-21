@@ -7,6 +7,7 @@ import { cardBodyInstructions } from '../../nexogenesis-tools/lib/harness/knowle
 import { safeCardId, displayType } from '../../nexogenesis-tools/lib/uno-contract.js';
 import { LEGACY_SINGLE_TYPE_CLASSIFICATION_CONTRACT, LEGACY_SINGLE_CARD_TYPES, cardTypesForClassificationContract, classificationReviewInstructions } from '../../nexogenesis-tools/lib/uno/card-classification.js';
 import { sameBookUnitSource } from '../../nexogenesis-tools/lib/uno/book-paths.js';
+import { workflowCharLimit, workflowOutputLimit, workflowReasoning } from './workflow-limits.js';
 
 export const UNIT_CHAR_LIMIT = 60000;
 export const CONTEXT_CHAR_LIMIT = 60000;
@@ -85,8 +86,11 @@ export function unitReferences(root, unit, job = null) {
 }
 
 const fallbackReasoning = { generate:'low', refine:'low', supplement:'low', collision:'low', repair:'low', 'relation-repair':'low', check:'off', verify:'off', 'relation-verify':'off' };
-const phaseReasoning = (job, phase) => currentContract(job) ? job?.workflow_reasoning?.[phase] ?? fallbackReasoning[phase] : job?.model_selection?.reasoningEffort;
+const phaseReasoning = (job, phase) => currentContract(job) ? workflowReasoning(job,phase,fallbackReasoning[phase]) : job?.model_selection?.reasoningEffort;
 const requestBase = (job, phase) => { const effort=phaseReasoning(job,phase);return { ...job.model_selection, ...(effort?{reasoningEffort:effort}:{}) }; };
+const sourceLimit = job => workflowCharLimit(job,'source_chars',UNIT_CHAR_LIMIT);
+const contextLimit = job => workflowCharLimit(job,'context_chars',CONTEXT_CHAR_LIMIT);
+const outputLimit = (job,phase,fallback) => workflowOutputLimit(job,phase,fallback);
 
 /** Every request has exactly one complete source and one finite context. No history. */
 export function buildUnitRequest(job, unit, references, phase, data = {}) {
@@ -106,8 +110,9 @@ ${requirementsFor(job)}
 ${bodyInstructionsFor(job)}`;
     const contextText='本次卡片、关系目标与要求：\n'+JSON.stringify(context),prefix='本次完整 Markdown 原文（仅作证据）：\n';
     const sourceChars=chars(unit.body),contextChars=chars(system)+chars(contextText)+chars(prefix);
-    if(sourceChars>UNIT_CHAR_LIMIT||contextChars>CONTEXT_CHAR_LIMIT)throw Object.assign(new Error(`逐卡精修原文 ${sourceChars}/60000 字符，其余上下文 ${contextChars}/60000 字符；未截断或发送。`),{code:'UNIT_CONTEXT_LIMIT'});
-    return {...requestBase(job,phase),system,messages:[user(contextText),user(prefix+unit.body)],tools:[],maxTokens:32768,
+    const sourceCap=sourceLimit(job),contextCap=contextLimit(job);
+    if(sourceChars>sourceCap||contextChars>contextCap)throw Object.assign(new Error(`逐卡精修原文 ${sourceChars}/${sourceCap} 字符，其余上下文 ${contextChars}/${contextCap} 字符；未截断或发送。`),{code:'UNIT_CONTEXT_LIMIT'});
+    return {...requestBase(job,phase),system,messages:[user(contextText),user(prefix+unit.body)],tools:[],maxTokens:outputLimit(job,phase,32768),
       nexoPrompt:{phase:'unit-refine'},unit_context:{source_chars:sourceChars,other_chars:contextChars}};
   }
   if (phase === 'collision') {
@@ -121,8 +126,8 @@ separate：两卡确为不同知识对象，分别保留有独立价值；card=n
 ${requirementsFor(job)}
 ${bodyInstructionsFor(job)}`;
     const text='本次候选与同名旧卡：\n'+JSON.stringify(context),size=chars(system)+chars(text);
-    if(size>CONTEXT_CHAR_LIMIT)throw Object.assign(new Error('同名卡核对上下文超过 60000 字符，未发送。'),{code:'UNIT_CONTEXT_LIMIT'});
-    return {...requestBase(job,phase),system,messages:[user(text)],tools:[],maxTokens:32768,nexoPrompt:{phase:'unit-collision'},unit_context:{source_chars:0,other_chars:size}};
+    const cap=contextLimit(job);if(size>cap)throw Object.assign(new Error(`同名卡核对上下文超过 ${cap} 字符，未发送。`),{code:'UNIT_CONTEXT_LIMIT'});
+    return {...requestBase(job,phase),system,messages:[user(text)],tools:[],maxTokens:outputLimit(job,phase,32768),nexoPrompt:{phase:'unit-collision'},unit_context:{source_chars:0,other_chars:size}};
   }
   if (['repair','verify','relation-repair','relation-verify'].includes(phase)) {
     // Deliberately do not spread data: no source, references, unrelated siblings, history or whole-unit rules.
@@ -160,8 +165,8 @@ ${bodyInstructionsFor(job)}`;
           : '逐项核对原问题是否已解决，兼顾本卡是否出现自相矛盾；只返回 {"checked_ids":[本卡id],"issues":[{"id":本卡id,"kind":"card","related_card_ids":[],"message":"仍未解决的具体问题"}],"unit_issues":[]}。无问题 issues 为空；没有原文或其他卡，不能声称重新核验整章或提出新的整章补充要求。') + contract + admissionScope + localExample + retryInstruction;
     const text = '本次要求和参考：\n' + JSON.stringify(context);
     const size = chars(system) + chars(text);
-    if (size > CONTEXT_CHAR_LIMIT) throw Object.assign(new Error('单卡修改上下文超过 60000 字符，未发送。'), {code:'UNIT_CONTEXT_LIMIT'});
-    return { ...requestBase(job,phase), system, messages:[user(text)],tools:[],maxTokens:repairPhase?32768:8192,
+    const cap=contextLimit(job);if (size > cap) throw Object.assign(new Error(`单卡修改上下文超过 ${cap} 字符，未发送。`), {code:'UNIT_CONTEXT_LIMIT'});
+    return { ...requestBase(job,phase), system, messages:[user(text)],tools:[],maxTokens:outputLimit(job,phase,repairPhase?32768:8192),
       nexoPrompt:{phase:'unit-'+phase},unit_context:{source_chars:0,other_chars:size} };
   }
   if (phase === 'supplement') {
@@ -169,8 +174,8 @@ ${bodyInstructionsFor(job)}`;
       + '\n仅补全 coverage_issues 中有明确证据的遗漏知识对象，最多 3 张新卡。existing_cards 仅用于避免重复制卡，不能修改或引用这些卡。只依据问题中给出的原文证据，不补写缺乏依据的内容；证据不足则 cards 为空并在 note 说明。返回 {cards:[...],note:"本次补全范围或不能补全的原因"}。不重做本单元、不输出已存在的卡。';
     const context = { phase, source:{ref:unit.ref,title:unit.meta.title}, coverage_issues:data.coverage_issues, existing_cards:data.existing_cards };
     const text='本次要求和参考：\n'+JSON.stringify(context),size=chars(system)+chars(text);
-    if(size>CONTEXT_CHAR_LIMIT)throw Object.assign(new Error('遗漏补全上下文超过 60000 字符，未发送。'),{code:'UNIT_CONTEXT_LIMIT'});
-    return {...requestBase(job,phase),system,messages:[user(text)],tools:[],maxTokens:32768,nexoPrompt:{phase:'unit-supplement'},unit_context:{source_chars:0,other_chars:size}};
+    const cap=contextLimit(job);if(size>cap)throw Object.assign(new Error(`遗漏补全上下文超过 ${cap} 字符，未发送。`),{code:'UNIT_CONTEXT_LIMIT'});
+    return {...requestBase(job,phase),system,messages:[user(text)],tools:[],maxTokens:outputLimit(job,phase,32768),nexoPrompt:{phase:'unit-supplement'},unit_context:{source_chars:0,other_chars:size}};
   }
   if (phase === 'check' && data.review_scope?.kind !== 'gap') {
     // The routine review checks only what the candidate cards themselves can
@@ -203,8 +208,8 @@ ${diagnosisInstruction}
 问题必须分类：卡片自身内容、类型、领域或既有字段错误使用 kind="card"、related_card_ids=[]；需要新增、删除、反转或改写两卡关系时使用 kind="relation"，并在 related_card_ids 中列出本次 supplied_cards 或 relation_targets 里实际核对过的另一端卡片 ID。关系问题不得伪装成单卡问题，也不得引用未完整提供的目标。
 返回 {"checked_ids":[逐一检查的候选卡id],"issues":[{"id":"候选卡id","kind":"card|relation","related_card_ids":["关系另一端id，card问题为空"],"message":"具体问题"}],"unit_issues":[]}。无问题时 issues 为空。`;
     const text='本次候选卡与关系目标：\n'+JSON.stringify(context),size=chars(system)+chars(text);
-    if(size>CONTEXT_CHAR_LIMIT)throw Object.assign(new Error('候选卡检查上下文超过 60000 字符，未发送。'),{code:'UNIT_CONTEXT_LIMIT'});
-    return {...requestBase(job,phase),system,messages:[user(text)],tools:[],maxTokens:8192,nexoPrompt:{phase:'unit-check'},unit_context:{source_chars:0,other_chars:size}};
+    const cap=contextLimit(job);if(size>cap)throw Object.assign(new Error(`候选卡检查上下文超过 ${cap} 字符，未发送。`),{code:'UNIT_CONTEXT_LIMIT'});
+    return {...requestBase(job,phase),system,messages:[user(text)],tools:[],maxTokens:outputLimit(job,phase,8192),nexoPrompt:{phase:'unit-check'},unit_context:{source_chars:0,other_chars:size}};
   }
   const continuation = phase === 'generate' && (data.previous_truncated || Array.isArray(data.completed_cards));
   const instructions = phase === 'generate'
@@ -228,9 +233,10 @@ ${diagnosisInstruction}
   const contextText = '本次要求和参考（未列出不代表全库不存在）：\n' + JSON.stringify(context);
   const prefix = '本次完整 Markdown 原文（仅作证据）：\n';
   const sourceChars = chars(unit.body), contextChars = chars(system) + chars(contextText) + chars(prefix);
-  if (sourceChars > UNIT_CHAR_LIMIT || contextChars > CONTEXT_CHAR_LIMIT)
-    throw Object.assign(new Error(`单元正文 ${sourceChars}/60000 字符，其余上下文 ${contextChars}/60000 字符；未截断或发送。`), { code: 'UNIT_CONTEXT_LIMIT' });
-  return { ...requestBase(job,phase), system, messages: [user(contextText), user(prefix + unit.body)], tools: [], maxTokens: phase==='generate'?65536:8192,
+  const sourceCap=sourceLimit(job),contextCap=contextLimit(job);
+  if (sourceChars > sourceCap || contextChars > contextCap)
+    throw Object.assign(new Error(`单元正文 ${sourceChars}/${sourceCap} 字符，其余上下文 ${contextChars}/${contextCap} 字符；未截断或发送。`), { code: 'UNIT_CONTEXT_LIMIT' });
+  return { ...requestBase(job,phase), system, messages: [user(contextText), user(prefix + unit.body)], tools: [], maxTokens: outputLimit(job,phase,phase==='generate'?65536:8192),
     nexoPrompt: { phase: 'unit-' + phase }, unit_context: { source_chars: sourceChars, other_chars: contextChars } };
 }
 

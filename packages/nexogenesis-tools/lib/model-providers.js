@@ -1,34 +1,37 @@
-/** Curated API contracts, checked 2026-09-18. Capabilities belong to exact models, not brands. */
-const model = (id, label, vision, thinking, efforts = [], format = "openai", context = 262144) =>
-	({ id, label, vision, thinking, efforts, format, context });
+/** Curated API contracts, checked 2026-09-21. Capabilities belong to exact models, not brands. */
+const model = (id, label, vision, thinking, efforts = [], format = "openai", context = 262144, maxOutput = 32768) =>
+	({ id, label, vision, thinking, efforts, format, context, maxOutput });
 export const MODEL_PROVIDERS = {
 	deepseek: { id: "deepseek", label: "DeepSeek", route: "nexo-deepseek", base_url: "https://api.deepseek.com", credential_ref: "DEEPSEEK_API_KEY", default_model: "deepseek-flash", description: "DeepSeek 官方 API；目录只列当前公开模型，旧 ID 仅作兼容识别。", docs: "https://api-docs.deepseek.com/guides/thinking_mode/", models: [
-		model("deepseek-flash", "DeepSeek Flash · 当前通用", true, "toggle", ["low", "high", "max"], "deepseek", 1048576),
-		model("deepseek-v4-pro", "V4 Pro", false, "toggle", ["low", "high", "max"], "deepseek", 1048576),
+		model("deepseek-flash", "DeepSeek Flash · 当前通用", true, "toggle", ["low", "high", "max"], "deepseek", 1048576, 393216),
+		model("deepseek-v4-pro", "V4 Pro", false, "toggle", ["low", "high", "max"], "deepseek", 1048576, 393216),
 	] },
 	kimi: { id: "kimi", label: "Kimi 开放平台", route: "nexo-kimi", base_url: "https://api.moonshot.cn/v1", credential_ref: "MOONSHOT_API_KEY", default_model: "kimi-k3", description: "按 API 用量计费，与 Kimi Code Plan 的密钥不通用。", docs: "https://platform.kimi.ai/docs/api/models-overview", models: [
-		model("kimi-k3", "Kimi K3", true, "always", ["low", "high", "max"], "openai", 1048576),
-		model("kimi-k2.7-code", "Kimi K2.7 Code", true, "always"),
+		model("kimi-k3", "Kimi K3", true, "always", ["low", "high", "max"], "openai", 1048576, 131072),
+		model("kimi-k2.7-code", "Kimi K2.7 Code", true, "always", [], "openai", 262144, 32768),
 		model("kimi-k2.6", "Kimi K2.6", true, "toggle", [], "deepseek"),
 		model("kimi-k2.5", "Kimi K2.5", true, "toggle", [], "deepseek"),
 	] },
 	kimi_code_plan: { id: "kimi_code_plan", label: "Kimi Code Plan", route: "kimi-coding", base_url: "https://api.kimi.com/coding", credential_ref: "KIMI_CODE_PLAN_API_KEY", default_model: "k3-256k", description: "Kimi Code 控制台签发的套餐 Key；保留原生 Anthropic 适配，可用性受套餐限制。", docs: "https://www.kimi.com/code/docs/", models: [
-		model("k3", "Kimi K3 · 套餐决定上下文", true, "always", ["low", "high", "max"], "native", 1048576),
-		model("k3-256k", "Kimi K3 256K", true, "always", ["low", "high", "max"], "native"),
-		model("kimi-for-coding", "Kimi Code · 标准（服务端更新）", true, "always", [], "native"),
-		model("kimi-for-coding-highspeed", "Kimi K2.7 Code · 高速", true, "always", [], "native"),
+		model("k3", "Kimi K3 · 套餐决定上下文", true, "toggle", ["low", "high", "max"], "native", 1048576, 131072),
+		model("k3-256k", "Kimi K3 256K", true, "toggle", ["low", "high", "max"], "native", 262144, 131072),
+		model("kimi-for-coding", "Kimi Code · 标准（服务端更新）", true, "toggle", ["low", "high", "max"], "native", 1048576, 131072),
+		model("kimi-for-coding-highspeed", "Kimi Code · 高速（固定思考）", true, "always", [], "native", 262144, 32768),
 	] },
 	glm: { id: "glm", label: "智谱 GLM", route: "nexo-glm", base_url: "https://open.bigmodel.cn/api/paas/v4", credential_ref: "NEXO_GLM_API_KEY", default_model: "glm-5.2", description: "智谱开放平台通用 API，不是 Coding Plan 专用端点。", docs: "https://docs.bigmodel.cn/cn/guide/capabilities/thinking", models: [
-		model("glm-5.2", "GLM-5.2", false, "toggle", ["high", "max"], "zai", 1000000),
+		model("glm-5.2", "GLM-5.2", false, "toggle", ["high", "max"], "zai", 1000000, 65536),
 		model("glm-5", "GLM-5", false, "toggle", [], "zai", 200000),
 		model("glm-4.7", "GLM-4.7", false, "toggle", [], "zai", 200000),
 		model("glm-4.6v", "GLM-4.6V · 图文", true, "toggle", [], "zai", 131072),
 		model("glm-4.6v-flash", "GLM-4.6V Flash · 图文", true, "toggle", [], "zai", 131072),
 	] },
 	dashscope: { id: "dashscope", label: "阿里云百炼", route: "nexo-dashscope", base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1", credential_ref: "NEXO_DASHSCOPE_API_KEY", default_model: "qwen3.6-plus", description: "中国内地通用 API；其它地域或工作空间专属地址请使用自定义接口。", docs: "https://help.aliyun.com/zh/model-studio/deep-thinking", models: [
-		model("qwen3.6-plus", "Qwen3.6 Plus · 图文", true, "toggle", [], "qwen"),
+		model("qwen3.6-plus", "Qwen3.6 Plus · 图文", true, "toggle", [], "qwen", 1048576, 65536),
 		model("qwen3-vl-plus", "Qwen3 VL Plus · 图文", true, "toggle", [], "qwen"),
 	] },
+	volcengine: { id: "volcengine", label: "火山方舟", route: "nexo-volcengine", base_url: "https://ark.cn-beijing.volces.com/api/v3", credential_ref: "NEXO_VOLCENGINE_API_KEY", default_model: "", description: "中国内地按量 API；填写控制台给出的模型或推理接入点 ID。Coding Plan 使用不同端点，应走自定义接口。", docs: "https://docs.volcengine.com/docs/ark/compatible-with-openai-sdk?lang=zh", models: [] },
+	qianfan: { id: "qianfan", label: "百度千帆", route: "nexo-qianfan", base_url: "https://qianfan.baidubce.com/v2", credential_ref: "NEXO_QIANFAN_API_KEY", default_model: "", description: "中国内地 OpenAI 兼容推理接口；填写千帆模型列表中的准确 model 值。", docs: "https://cloud.baidu.com/doc/qianfan-docs/s/qm8qxemze", models: [] },
+	hunyuan: { id: "hunyuan", label: "腾讯混元", route: "nexo-hunyuan", base_url: "https://api.hunyuan.cloud.tencent.com/v1", credential_ref: "NEXO_HUNYUAN_API_KEY", default_model: "", description: "混元 OpenAI 兼容接口；新购服务及新增能力请同时核对腾讯 TokenHub 的迁移说明。", docs: "https://cloud.tencent.com/document/product/1729/111007", models: [] },
 	siliconflow: { id: "siliconflow", label: "硅基流动", route: "nexo-siliconflow", base_url: "https://api.siliconflow.cn/v1", credential_ref: "NEXO_SILICONFLOW_API_KEY", default_model: "Qwen/Qwen3-32B", description: "聚合服务使用完整模型 ID；同名模型的能力与参数以该平台为准。", docs: "https://docs.siliconflow.cn/docs/api/chat-completions-post", models: [
 		model("Qwen/Qwen3-32B", "Qwen3 32B", false, "toggle", [], "qwen", 40960),
 		model("Qwen/Qwen3-VL-30B-A3B-Instruct", "Qwen3 VL 30B · 图文", true, "none"),
@@ -64,11 +67,41 @@ export function modelCapabilities(provider, id, overrides = {}) {
 export function workflowReasoningPolicy(settings = {}, workflow = "compile") {
 	const active = normalizeModelSettings(settings);
 	const cap = modelCapabilities(active.provider, active.model, active);
-	if (cap.thinking === "none") return workflow === "compile" ? {} : undefined;
-	const semantic = cap.efforts.includes("low") ? "low" : "high";
-	const economical = cap.thinking === "toggle" ? "off" : "high";
-	if (workflow === "construct") return "high";
-	return { generate: semantic, supplement: semantic, repair: semantic, check: economical, verify: economical };
+	if (cap.thinking === "none") {
+		if (workflow === "construct") return undefined;
+		const omitted = "provider-default";
+		return { generate:omitted, refine:omitted, supplement:omitted, collision:omitted, repair:omitted,
+			'relation-repair':omitted, check:omitted, verify:omitted, 'relation-verify':omitted, domain:omitted,
+			'single-card-rewrite':omitted, 'single-card-review':omitted, 'single-card-repair':omitted,
+			'single-card-verify':omitted, 'single-card-domain-review':omitted };
+	}
+	const semantic = cap.efforts.includes("low") ? "low" : cap.thinking === "toggle" ? "high" : "provider-default";
+	const economical = cap.thinking === "toggle" ? "off" : cap.efforts[0] ?? "provider-default";
+	if (workflow === "construct") return cap.efforts.includes("high") || cap.thinking === "toggle" ? "high" : "provider-default";
+	return { generate:semantic, refine:semantic, supplement:semantic, collision:semantic, repair:semantic,
+		'relation-repair':semantic, check:economical, verify:economical, 'relation-verify':economical, domain:semantic,
+		'single-card-rewrite':semantic, 'single-card-review':economical, 'single-card-repair':semantic,
+		'single-card-verify':economical, 'single-card-domain-review':semantic };
+}
+
+/** Freeze conservative workflow budgets from the exact model capability. */
+export function workflowResourcePolicy(settings = {}) {
+	const active = normalizeModelSettings(settings);
+	const cap = modelCapabilities(active.provider, active.model, active);
+	const context = Number.isFinite(cap.context) ? cap.context : 262144;
+	const maxOutput = Number.isFinite(cap.maxOutput) ? cap.maxOutput : 32768;
+	const source = !cap.known ? 60000 : context >= 1000000 ? 90000 : context >= 262144 ? 72000 : context >= 131072 ? 60000 : 20000;
+	const desired = { generate:98304, refine:49152, supplement:49152, collision:24576, repair:49152,
+		'relation-repair':49152, check:16384, verify:16384, 'relation-verify':16384, domain:32768,
+		'construction-strategy':16384, 'construction-author':49152, 'construction-review':24576,
+		'construction-repair':49152, 'construction-verify':24576, 'construction-response-recovery':16384,
+		'compile-response-recovery':16384, 'compile-generation-recovery':49152,
+		'single-card-rewrite':49152, 'single-card-review':16384, 'single-card-repair':49152,
+		'single-card-verify':16384, 'single-card-domain-review':16384 };
+	return { version:'provider-aware-v1', provider:active.provider, model:active.model, model_context_tokens:context,
+		model_output_tokens:maxOutput, source_chars:source, context_chars:source, construction_chars:source,
+		strategy_chars:!cap.known ? 24000 : context >= 1000000 ? 32000 : context >= 262144 ? 28000 : 24000,
+		output_tokens:Object.fromEntries(Object.entries(desired).map(([phase, value]) => [phase, Math.min(value, maxOutput)])) };
 }
 
 export function normalizeModelSettings(settings = {}) {

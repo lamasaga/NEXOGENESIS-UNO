@@ -26,17 +26,20 @@ const PIPELINE_RECENT_RUNS = 3;
 const PIPELINE_HISTORY_PREVIEWS = 8;
 
 /** Fold the session event log into frontend ChatMessage[] (M1: user + assistant). */
-export function foldMessages(history, { unoTask = false } = {}) {
+export function foldMessages(history, { unoTask = false, sessionId = "" } = {}) {
 	const messages = [];
 	for (const entry of history.events ?? []) {
 		const event = entry.event ?? entry;
+		const identity = Number.isInteger(event.seq) && sessionId
+			? { id: `${sessionId}:${event.seq}`, seq: event.seq }
+			: {};
 		if (event.type === QUICK_MESSAGE_EVENT) {
 			const data = event.data;
 			if (data?.content?.trim()) messages.push({ role: data.role, content: data.content,
 				...(data.sources ? { sources: data.sources } : {}), ...(data.status ? { status: data.status } : {}),
 				...(data.detail ? { detail: data.detail } : {}), ...(data.thinking_route ? { thinking_route: data.thinking_route } : {}),
 				...(data.intent ? { intent: { action: data.intent.action, judgment: data.intent.judgment, route: data.intent.route } } : {}),
-				ts: new Date(event.time).toISOString() });
+				...identity, ts: new Date(event.time).toISOString() });
 			continue;
 		}
 		if (event.type !== "user/message" && event.type !== "assistant/message") continue;
@@ -54,6 +57,7 @@ export function foldMessages(history, { unoTask = false } = {}) {
 		if (content === "") continue;
 		if (role === "user" && !isVisibleUserMessage(event, content)) continue;
 		messages.push({
+			...identity,
 			role,
 			content: role === "user" ? content.split(CONSTRUCT_CONTEXT_MARKER)[0].split(/\n\n\[(?:THINKING|DISCUSSION)_CONTEXT\]\n/)[0] : content,
 			...event.time !== void 0 ? { ts: new Date(event.time).toISOString() } : {}
@@ -180,6 +184,102 @@ export async function handleConversationGet(ctx, _req, res, _trustedHosts, id, r
 	json(res, 200, await conversationDetail(ctx, id, root));
 }
 
+const DEFAULT_HISTORY_MESSAGES = 30;
+const MAX_HISTORY_MESSAGES = 50;
+
+function historyLimit(value) {
+	const parsed = Number(value ?? DEFAULT_HISTORY_MESSAGES);
+	if (!Number.isInteger(parsed) || parsed < 1 || parsed > MAX_HISTORY_MESSAGES) {
+		throw new HttpError(400, `历史窗口须为 1–${MAX_HISTORY_MESSAGES} 条消息。`);
+	}
+	return parsed;
+}
+
+function optionalSequence(value, name) {
+	if (value === null) return undefined;
+	const parsed = Number(value);
+	if (!Number.isInteger(parsed) || parsed < 0) throw new HttpError(400, `${name} 必须是非负整数。`);
+	return parsed;
+}
+
+function historySequence(entry) {
+	const event = entry?.event ?? entry;
+	return Number.isInteger(event?.seq) ? event.seq : null;
+}
+
+/** A bounded conversation window for fast switching and backwards paging. */
+export async function conversationHistoryWindow(ctx, id, root, { beforeSeq, afterSeq, limit = DEFAULT_HISTORY_MESSAGES } = {}) {
+	assertOwnedConversation(id);
+	if (beforeSeq !== undefined && afterSeq !== undefined) throw new HttpError(400, 'before_seq 与 after_seq 不能同时使用。');
+	const ext = conversationExt(id);
+	const pageLimit = historyLimit(limit);
+	const history = await rpcCall(ctx, "session.history", {
+		sessionId: id,
+		maxMessages: pageLimit,
+		...(beforeSeq !== undefined ? { beforeSeq } : {})
+	});
+	const entries = history.events ?? [];
+	const sequences = entries.map(historySequence).filter(Number.isInteger);
+	const rawOldestSeq = sequences.length ? Math.min(...sequences) : null;
+	const newestSeq = sequences.length ? Math.max(...sequences) : null;
+	const nativeGap = afterSeq !== undefined && history.hasMore === true && rawOldestSeq !== null && afterSeq < rawOldestSeq - 1;
+	const selected = afterSeq === undefined || nativeGap
+		? entries
+		: entries.filter(entry => {
+			const seq = historySequence(entry);
+			return seq !== null && seq > afterSeq;
+		});
+	const foldedMessages = foldMessages({ events: selected }, { unoTask: Boolean(ext.uno_job_id), sessionId: id });
+	const resetRequired = afterSeq !== undefined && (nativeGap || foldedMessages.length > pageLimit);
+	let messages = foldedMessages.slice(-pageLimit);
+	const oldestSeq = messages.find(message => Number.isInteger(message.seq))?.seq ?? null;
+	const hasOlder = history.hasMore === true || foldedMessages.length > pageLimit;
+	const job = root ? unoConversationJob(root, id) : null;
+	if (job) {
+		const recentSessions = (job.sessions ?? []).filter(sessionId => sessionId !== id).slice(-PIPELINE_RECENT_RUNS);
+		const internal = await Promise.all(recentSessions.map(async sessionId => {
+			try {
+				return foldMessages(await rpcCall(ctx, "session.history", { sessionId, maxMessages: pageLimit }), { unoTask: true, sessionId });
+			} catch (error) {
+				if (error?.code !== "session-not-found") throw error;
+				return [];
+			}
+		}));
+		messages = [...messages,...internal.flat()].sort((a,b)=>String(a.ts??'').localeCompare(String(b.ts??''))||String(a.id??'').localeCompare(String(b.id??''))).slice(-pageLimit);
+	}
+	const title = ext.title ?? titleFromHistory(history) ?? "新会话";
+	const latestEventTime = entries.map(entry => entry?.time ?? entry?.event?.time).filter(value => value !== undefined).at(-1);
+	const latestEventDate = latestEventTime === undefined ? null : new Date(latestEventTime);
+	const ownerUpdatedAt = latestEventDate && !Number.isNaN(latestEventDate.getTime()) ? latestEventDate.toISOString() : null;
+	const updatedAt = [ownerUpdatedAt, messages.at(-1)?.ts, ext.created_at].filter(Boolean).sort().at(-1) ?? new Date().toISOString();
+	return {
+		id,
+		project_id: ext.project_id ?? ensureDefaultProject().id,
+		...(ext.thinking_mode === "quick" ? { thinking_mode: "quick" } : {}),
+		...(ext.uno_job_id ? { uno_job_id: ext.uno_job_id } : {}),
+		title,
+		created_at: ext.created_at ?? new Date().toISOString(),
+		updated_at: updatedAt,
+		...(ext.pinned ? { pinned: true } : {}),
+		...(ext.task_kind ? { task_kind: ext.task_kind } : {}),
+		...(ext.pipeline_history ? { pipeline_history: ext.pipeline_history } : {}),
+		messages,
+		history: { oldest_seq: oldestSeq, newest_seq: newestSeq, has_older: hasOlder, reset_required: resetRequired }
+	};
+}
+
+/** GET /api/conversations/:id/history → bounded tail, delta, or older page. */
+export async function handleConversationHistoryGet(ctx, req, res, _trustedHosts, id, root) {
+	const url = new URL(req.url ?? "/", "http://x");
+	const beforeSeq = optionalSequence(url.searchParams.get("before_seq"), "before_seq");
+	const afterSeq = optionalSequence(url.searchParams.get("after_seq"), "after_seq");
+	json(res, 200, await conversationHistoryWindow(ctx, id, root, {
+		beforeSeq,
+		afterSeq,
+		limit: historyLimit(url.searchParams.get("limit"))
+	}));
+}
+
 /** PATCH /api/conversations/:id {title?, pinned?} → Conversation */
 export async function handleConversationPatch(ctx, req, res, _trustedHosts, id) {
 	assertOwnedConversation(id);
@@ -220,11 +320,11 @@ async function conversationDetail(ctx, id, root) {
 	const ext = conversationExt(id);
 	const history = await rpcCall(ctx, "session.history", { sessionId: id, maxMessages: 500 });
 	const quickEvents = ext.thinking_mode === "quick" ? ctx.get?.("sessions")?.get(id)?.events : null;
-	let rawMessages = foldMessages(quickEvents ? { events: quickEvents } : history, {unoTask:Boolean(ext.uno_job_id)});
+	let rawMessages = foldMessages(quickEvents ? { events: quickEvents } : history, {unoTask:Boolean(ext.uno_job_id),sessionId:id});
 	const job=root?unoConversationJob(root,id):null;
 	if(job){
 		const internal=await Promise.all((job.sessions??[]).filter(s=>s!==id).map(async sessionId=>{
-			try {return foldMessages(await rpcCall(ctx,'session.history',{sessionId,maxMessages:100}),{unoTask:true});}
+			try {return foldMessages(await rpcCall(ctx,'session.history',{sessionId,maxMessages:100}),{unoTask:true,sessionId});}
 			catch(error){if(error?.code!=='session-not-found')throw error;return [{role:'system',content:'部分内部执行历史暂不可用；任务进度和成果收据保留。'}];}
 		}));
 		rawMessages=[...rawMessages,...internal.flat()].sort((a,b)=>String(a.ts??'').localeCompare(String(b.ts??'')));

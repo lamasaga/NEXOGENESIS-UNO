@@ -443,6 +443,8 @@ export interface Project {
 }
 
 export interface ChatMessage {
+  id?: string;
+  seq?: number;
   role: "user" | "assistant" | "system";
   content: string;
   ts?: string;
@@ -462,6 +464,18 @@ export interface Conversation {
   thinking_route?: ThinkingRoute;
   pipeline_history?: PipelineHistory;
   messages: ChatMessage[];
+  history?: ConversationHistoryState;
+}
+
+export interface ConversationHistoryState {
+  oldest_seq: number | null;
+  newest_seq: number | null;
+  has_older: boolean;
+  reset_required: boolean;
+}
+
+export interface ConversationWindow extends Conversation {
+  history: ConversationHistoryState;
 }
 
 export type PipelineStage = "compile" | "theme_compile" | "digest" | "construct";
@@ -538,6 +552,19 @@ export async function fetchConversation(id: string, signal?: AbortSignal): Promi
   return jsonOrThrow(await fetch(`/api/conversations/${encodeURIComponent(id)}`, {signal}));
 }
 
+export async function fetchConversationWindow(id: string, options: {
+  beforeSeq?: number;
+  afterSeq?: number;
+  limit?: number;
+  signal?: AbortSignal;
+} = {}): Promise<ConversationWindow> {
+  const query = new URLSearchParams();
+  if (options.beforeSeq !== undefined) query.set("before_seq", String(options.beforeSeq));
+  if (options.afterSeq !== undefined) query.set("after_seq", String(options.afterSeq));
+  query.set("limit", String(options.limit ?? 30));
+  return jsonOrThrow(await fetch(`/api/conversations/${encodeURIComponent(id)}/history?${query}`, { signal: options.signal }));
+}
+
 export async function updateConversation(id: string, update: {
   title?: string; pinned?: boolean;
 }): Promise<Conversation> {
@@ -555,6 +582,25 @@ export async function deleteConversation(id: string): Promise<void> {
     body: "{}",
   });
   if (!response.ok) await jsonOrThrow(response);
+}
+
+export interface ConversationBatchDeleteResult {
+  deletedIds: string[];
+  failures: Array<{ id: string; message: string }>;
+}
+
+export async function deleteConversations(ids: string[]): Promise<ConversationBatchDeleteResult> {
+  const deletedIds: string[] = [];
+  const failures: ConversationBatchDeleteResult["failures"] = [];
+  for (const id of [...new Set(ids)]) {
+    try {
+      await deleteConversation(id);
+      deletedIds.push(id);
+    } catch (error) {
+      failures.push({ id, message: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  return { deletedIds, failures };
 }
 
 export async function sendChat(conversationId: string, message: string):

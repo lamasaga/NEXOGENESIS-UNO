@@ -72,7 +72,6 @@ async function settleTurn(ctx, root, sessionId, event) {
 		runtime.settlePauseAfterBoundary(state.run.run_id);
 		return { continued: false };
 	}
-	if (state.run.mode === "construct") { runtime.setStatus(state.run.run_id,"paused","本批执行结束，进度保留；可以讨论或继续工作。"); return {continued:false}; }
 	if (state.run.write_authority === "trusted") {
 		const count = runtime.continuations(state.run.run_id).filter((e) => e.kind === "pipeline_auto_continue").length;
 		if (count < 24) {

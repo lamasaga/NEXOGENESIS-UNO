@@ -1,7 +1,7 @@
 import { resolveModelCredential } from "./model-credentials.js";
 /** Read-only connection check: one model-directory request, no generation or settings writes. */
 import { assertUsableApiKey, attributionHeaders } from "@deepseek-ai/dsh-llm";
-import { normalizeModelSettings, providerConfigOf, validateModelSettings, validateEndpoint } from "../../nexogenesis-tools/lib/model-providers.js";
+import { modelCapabilities, normalizeModelSettings, providerConfigOf, validateModelSettings, validateEndpoint } from "../../nexogenesis-tools/lib/model-providers.js";
 import { HttpError, json, readJsonBody } from "./rpc.js";
 
 const pending = new WeakSet();
@@ -29,7 +29,7 @@ export async function probeModelConnection(ctx, body, { fetchImpl = fetch, signa
       if (!stored.base_url || validateEndpoint(active.base_url) !== validateEndpoint(stored.base_url))
         throw new Error("更换自定义端点时请重新输入密钥，测试不会把旧密钥发送到新地址。");
     }
-    key = supplied || (await resolveModelCredential(ctx, provider.credential_ref))?.value || "";
+		key = supplied || (await resolveModelCredential(ctx,provider.credential_ref,{endpoint:provider.id==='custom'?active.base_url:undefined}))?.value || "";
     if (!key) throw new Error("请先输入该供应商的 API Key，或使用已经保存的密钥。");
     assertUsableApiKey(key, "nexogenesis", provider.credential_ref);
   } catch (error) {
@@ -72,7 +72,8 @@ export async function probeModelConnection(ctx, body, { fetchImpl = fetch, signa
     const all = [...new Set(payload.data.map(item => item?.id).filter(id =>
       typeof id === "string" && id.trim() === id && id.length > 0 && id.length <= 200
       && !/[\u0000-\u001f\u007f]/.test(id) && !id.includes(key)))].sort();
-    const listed = all.includes(active.model);
+    const selectedCanonical = modelCapabilities(active.provider, active.model, active).canonical_id ?? active.model;
+    const listed = all.some(id => (modelCapabilities(active.provider, id, active).canonical_id ?? id) === selectedCanonical);
     return { provider: active.provider, base_url: active.base_url, model: active.model, model_listed: listed,
       models: all.slice(0, 500), truncated: all.length > 500, elapsed_ms: Date.now() - started,
       message: "模型目录可访问。" + (listed ? "所选模型已列出。" : active.model ? "目录未列出所选模型；别名或专属模型可能不在目录中。" : "请选择或填写模型 ID。")

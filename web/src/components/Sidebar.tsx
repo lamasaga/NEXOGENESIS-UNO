@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CaretDown, CaretLeft, CaretRight, GearSix, Plus, UploadSimple } from "@phosphor-icons/react";
+import { CaretDown, CaretLeft, CaretRight, Check, GearSix, Plus, Trash, UploadSimple } from "@phosphor-icons/react";
 import type { ConversationSummary, PipelineRunState, PipelineStage, PipelineStatus } from "../api/client";
 
 const WORKFLOWS: Array<{ stage: PipelineStage; label: string; description: string }> = [
@@ -16,6 +16,7 @@ interface Props {
   onSelectConversation: (id: string) => void;
   onRenameConversation: (thread: ConversationSummary, title: string) => Promise<boolean>;
   onDeleteConversation: (thread: ConversationSummary) => Promise<boolean>;
+  onDeleteConversations: (threads: ConversationSummary[]) => Promise<ConversationBatchDeleteResult>;
   onTogglePinned: (thread: ConversationSummary) => Promise<boolean>;
   onClearPipelineConversation: (stage: PipelineStage) => Promise<boolean>;
   pipelineThreads: Partial<Record<PipelineStage, ConversationSummary>>;
@@ -29,10 +30,18 @@ interface Props {
   onToggleCollapsed: () => void;
 }
 
+export interface ConversationBatchDeleteResult {
+  deletedIds: string[];
+  failures: Array<{ id: string; title: string; message: string }>;
+}
+
 export function Sidebar(p: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<{ left: number; top: number } | null>(null);
+  const [batchMode, setBatchMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [ingestionCollapsed, setIngestionCollapsed] = useState(
     () => window.localStorage.getItem("nexo.sidebar.ingestionCollapsed") === "true"
   );
@@ -40,6 +49,7 @@ export function Sidebar(p: Props) {
   const pinned = normal.filter((thread) => thread.pinned);
   const regular = normal.filter((thread) => !thread.pinned);
   const pipelineBusy = p.pipelineRun?.phase === "starting" || p.pipelineRun?.phase === "running";
+  const selectedThreads = normal.filter((thread) => selectedIds.has(thread.id));
   const btn = "sidebar-primary-action";
   const toggleIngestion = () => setIngestionCollapsed((collapsed) => {
     const next = !collapsed;
@@ -68,20 +78,59 @@ export function Sidebar(p: Props) {
     };
   }, [menuId]);
 
+  useEffect(() => {
+    const availableIds = new Set(normal.map((thread) => thread.id));
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => availableIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [p.conversations]);
+
+  const leaveBatchMode = () => {
+    setBatchMode(false);
+    setBatchDialogOpen(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleBatchSelection = (id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds((current) => current.size === normal.length ? new Set() : new Set(normal.map((thread) => thread.id)));
+  };
+
   const renderConversation = (thread: ConversationSummary) => (
     <div key={thread.id} className="group relative" data-conversation-menu-root={menuId === thread.id ? "" : undefined}>
       <button
-        className={`block w-full truncate rounded-md px-2.5 py-1.5 pr-8 text-left text-[12px] transition-[background-color,color] duration-150 ${
-          thread.id === p.currentConvId
+        className={`flex w-full items-center gap-2 truncate rounded-md px-2.5 py-1.5 text-left text-[12px] transition-[background-color,color] duration-150 ${batchMode ? "pr-2.5" : "pr-8"} ${
+          selectedIds.has(thread.id)
+            ? "bg-sky-300/[0.11] text-sky-100"
+            : thread.id === p.currentConvId
             ? "bg-sky-400/15 text-sky-100"
             : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-300"
         }`}
-        onClick={() => { setMenuId(null); p.onSelectConversation(thread.id); }}
+        aria-pressed={batchMode ? selectedIds.has(thread.id) : undefined}
+        onClick={() => {
+          setMenuId(null);
+          if (batchMode) toggleBatchSelection(thread.id);
+          else p.onSelectConversation(thread.id);
+        }}
       >
-        {thread.pinned && <span className="mr-1.5 text-[9px] text-amber-200/80">◆</span>}
-        {thread.title}
+        {batchMode && <span className={`sidebar-conversation-check${selectedIds.has(thread.id) ? " is-selected" : ""}`} aria-hidden>
+          {selectedIds.has(thread.id) && <Check size={11} weight="bold" />}
+        </span>}
+        <span className="min-w-0 flex-1 truncate">
+          {thread.pinned && <span className="mr-1.5 text-[9px] text-amber-200/80">◆</span>}
+          {thread.title}
+        </span>
       </button>
-      <button
+      {!batchMode && <button
         className={`absolute right-1 top-1/2 -translate-y-1/2 rounded px-1.5 py-0.5 text-[14px] leading-none transition-[background-color,color,transform,opacity] duration-150 active:scale-95 ${
           menuId === thread.id || thread.id === p.currentConvId
             ? "text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-100"
@@ -108,8 +157,8 @@ export function Sidebar(p: Props) {
         }}
       >
         ⋯
-      </button>
-      {menuId === thread.id && <ConversationMenu
+      </button>}
+      {!batchMode && menuId === thread.id && <ConversationMenu
         thread={thread}
         anchor={menuAnchor}
         onClose={() => setMenuId(null)}
@@ -209,14 +258,38 @@ export function Sidebar(p: Props) {
       </section>
 
       <div className="sidebar-surface__conversations min-h-0 flex-1 overflow-y-auto px-3 pb-3">
+        <div className="sidebar-conversation-heading">
+          <div className="micro-label">对话</div>
+          {normal.length > 0 && <button
+            type="button"
+            className={`sidebar-batch-entry${batchMode ? " is-active" : ""}`}
+            onClick={() => batchMode ? leaveBatchMode() : (setMenuId(null), setBatchMode(true))}
+          >
+            {batchMode ? "取消" : "批量删除"}
+          </button>}
+        </div>
+        {batchMode && <div className="sidebar-batch-toolbar" role="toolbar" aria-label="批量管理对话">
+          <button type="button" className="sidebar-batch-select-all" onClick={toggleSelectAll}>
+            {selectedIds.size === normal.length ? "取消全选" : "全选"}
+          </button>
+          <span className="sidebar-batch-count" aria-live="polite">已选 {selectedIds.size} 项</span>
+          <button
+            type="button"
+            className="sidebar-batch-delete"
+            disabled={selectedIds.size === 0}
+            onClick={() => setBatchDialogOpen(true)}
+          >
+            <Trash size={12} weight="bold" aria-hidden />删除
+          </button>
+        </div>}
         {pinned.length > 0 && <section className="pb-2">
           <div className="micro-label py-1.5">置顶对话</div>
           <div className="space-y-0.5">{pinned.map(renderConversation)}</div>
         </section>}
         <section>
-          <div className="micro-label py-1.5">对话</div>
+          {pinned.length > 0 && <div className="micro-label py-1.5">其他对话</div>}
           {regular.length > 0 ? <div className="space-y-0.5">{regular.map(renderConversation)}</div> : (
-            <p className="sidebar-empty-conversations px-2.5 py-2 text-[11px] leading-5 text-zinc-600">新建对话，开始围绕知识体思考。</p>
+            pinned.length === 0 && <p className="sidebar-empty-conversations px-2.5 py-2 text-[11px] leading-5 text-zinc-600">新建对话，开始围绕知识体思考。</p>
           )}
         </section>
       </div>
@@ -231,8 +304,85 @@ export function Sidebar(p: Props) {
         if (event.target.files?.length) p.onUploadFiles(event.target.files);
         event.target.value = "";
       }} />
+      {batchDialogOpen && <BatchDeleteDialog
+        threads={selectedThreads}
+        onCancel={() => setBatchDialogOpen(false)}
+        onDelete={p.onDeleteConversations}
+        onFinished={(failures) => {
+          if (failures.length === 0) leaveBatchMode();
+          else setSelectedIds(new Set(failures.map((failure) => failure.id)));
+        }}
+      />}
     </aside>
   );
+}
+
+function BatchDeleteDialog({ threads, onCancel, onDelete, onFinished }: {
+  threads: ConversationSummary[];
+  onCancel: () => void;
+  onDelete: (threads: ConversationSummary[]) => Promise<ConversationBatchDeleteResult>;
+  onFinished: (failures: ConversationBatchDeleteResult["failures"]) => void;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<ConversationBatchDeleteResult | null>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    confirmRef.current?.focus();
+    const closeFromKeyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !submitting) onCancel();
+    };
+    document.addEventListener("keydown", closeFromKeyboard);
+    return () => document.removeEventListener("keydown", closeFromKeyboard);
+  }, [onCancel, submitting]);
+
+  const submit = async () => {
+    if (submitting || threads.length === 0) return;
+    setSubmitting(true);
+    const next = await onDelete(threads);
+    setSubmitting(false);
+    onFinished(next.failures);
+    if (next.failures.length === 0) return;
+    setResult(next);
+  };
+
+  return createPortal(<div className="sidebar-batch-dialog-backdrop" role="presentation" onMouseDown={(event) => {
+    if (event.target === event.currentTarget && !submitting) onCancel();
+  }}>
+    <section className="sidebar-batch-dialog" role="dialog" aria-modal="true" aria-labelledby="batch-delete-title">
+      <div className="sidebar-batch-dialog__header">
+        <span className="sidebar-batch-dialog__icon" aria-hidden><Trash size={16} weight="duotone" /></span>
+        <div>
+          <span className="sidebar-batch-dialog__eyebrow">对话管理</span>
+          <h2 id="batch-delete-title">{result ? "部分对话未删除" : `删除 ${threads.length} 段对话？`}</h2>
+        </div>
+      </div>
+      {result ? <>
+        <p className="sidebar-batch-dialog__copy">已删除 {result.deletedIds.length} 段；以下 {result.failures.length} 段仍然保留。</p>
+        <div className="sidebar-batch-dialog__failures" role="status">
+          {result.failures.map((failure) => <div key={failure.id}>
+            <strong>{failure.title}</strong>
+            <span>{failure.message}</span>
+          </div>)}
+        </div>
+      </> : <>
+        <p className="sidebar-batch-dialog__copy">所选对话及其中的聊天记录将被永久删除。正在运行或有待答事项的对话会受到保护，并保留在列表中。</p>
+        <div className="sidebar-batch-dialog__preview" aria-label="待删除对话">
+          {threads.slice(0, 4).map((thread) => <span key={thread.id}>{thread.title}</span>)}
+          {threads.length > 4 && <small>另有 {threads.length - 4} 段对话</small>}
+        </div>
+        <p className="sidebar-batch-dialog__note">此操作无法撤销，知识卡片不会受到影响。</p>
+      </>}
+      <div className="sidebar-batch-dialog__actions">
+        {result ? <button type="button" className="sidebar-batch-dialog__secondary" onClick={onCancel}>关闭</button> : <>
+          <button type="button" className="sidebar-batch-dialog__secondary" disabled={submitting} onClick={onCancel}>取消</button>
+          <button ref={confirmRef} type="button" className="sidebar-batch-dialog__danger" disabled={submitting} onClick={() => void submit()}>
+            {submitting ? "删除中…" : "确认批量删除"}
+          </button>
+        </>}
+      </div>
+    </section>
+  </div>, document.body);
 }
 
 type ConversationMenuMode = "actions" | "rename" | "delete";

@@ -1,5 +1,6 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { sha } from '../../nexogenesis-tools/lib/harness/uno-storage.js';
+import { workflowCharLimit, workflowOutputLimit, workflowReasoning } from './workflow-limits.js';
 
 export const COMPILE_RECOVERY_CONTRACT = 'compile-response-recovery-v1';
 export const COMPILE_RECOVERY_MODEL_LIMIT = 1;
@@ -33,8 +34,8 @@ export function buildCompileRecoveryRequest(job,{phase,responseText,errorMessage
 目标响应格式：{"checked_ids":[...],"issues":[{"id":"...","kind":"card|relation","related_card_ids":[],"message":"..."}],"unit_issues":[]}。
 返回格式只能是 {"action":"repair_response","repaired_response":目标响应} 或 cannot_repair；不得输出代码围栏、解释或其他文字。`;
   const text='本次失败响应与局部契约：\n'+JSON.stringify(context),size=Array.from(system+text).length;
-  if(size>60000)throw Object.assign(new Error('失败响应超过局部恢复上下文上限，未调用模型。'),{code:'COMPILE_RECOVERY_CONTEXT_LIMIT'});
-  return {...job.model_selection,reasoningEffort:'off',system,messages:[user(text)],tools:[],maxTokens:8192,
+  const limit=workflowCharLimit(job,'context_chars',60000);if(size>limit)throw Object.assign(new Error(`失败响应超过 ${limit} 字符的局部恢复上下文上限，未调用模型。`),{code:'COMPILE_RECOVERY_CONTEXT_LIMIT'});
+  const effort=workflowReasoning(job,'check','off');return {...job.model_selection,...(effort?{reasoningEffort:effort}:{}),system,messages:[user(text)],tools:[],maxTokens:workflowOutputLimit(job,'compile-response-recovery',8192),
     nexoPrompt:{phase:'unit-recovery'},unit_context:{source_chars:0,other_chars:size}};
 }
 
@@ -42,8 +43,8 @@ export function buildGenerationRecoveryRequest(job,{responseText,errorMessage}) 
   const system='只恢复已返回的制卡响应格式，不生成新知识、不重读原文、不补写正文、来源、关系或覆盖结论。只允许修复 JSON 语法与无歧义的外层字段包裹。目标格式为 {cards:[原响应中完整卡片],note:原有说明或null}。不得删除任何候选；无法无损恢复时返回 {action:"cannot_repair",reason:"具体原因"}。成功时返回 {action:"repair_response",repaired_response:目标对象}。只输出 JSON。';
   const text=JSON.stringify({original_response:responseText,validation_error:errorMessage});
   const size=Array.from(system+text).length;
-  if(size>60000)throw Object.assign(new Error('失败响应超过 60000 字符，原响应留在未组织池，未发送恢复请求。'),{code:'COMPILE_RECOVERY_CONTEXT_LIMIT'});
-  return {...job.model_selection,reasoningEffort:'off',system,messages:[user(text)],tools:[],maxTokens:32768,
+  const limit=workflowCharLimit(job,'context_chars',60000);if(size>limit)throw Object.assign(new Error(`失败响应超过 ${limit} 字符，原响应留在未组织池，未发送恢复请求。`),{code:'COMPILE_RECOVERY_CONTEXT_LIMIT'});
+  const effort=workflowReasoning(job,'check','off');return {...job.model_selection,...(effort?{reasoningEffort:effort}:{}),system,messages:[user(text)],tools:[],maxTokens:workflowOutputLimit(job,'compile-generation-recovery',32768),
     nexoPrompt:{phase:'unit-recovery'},unit_context:{source_chars:0,other_chars:size}};
 }
 

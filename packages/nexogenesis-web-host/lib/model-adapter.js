@@ -143,7 +143,7 @@ export class NexoModelAdapter extends LlmAdapter {
 		catch (error) { if (error instanceof ProviderBudgetError) throw new LlmError(error.message, error.code); throw error; }
 		const config = this.config(options.provider, options.model);
 		const provider = MODEL_PROVIDERS[config.provider];
-		const credential = await resolveModelCredential(this.ctx, provider.credential_ref);
+		const credential = await resolveModelCredential(this.ctx,provider.credential_ref,{endpoint:config.provider==='custom'?config.base_url:undefined});
 		const key = assertUsableApiKey(credential?.value ?? "", "nexogenesis", provider.credential_ref);
 		const body = await buildModelRequest(options, config, this.ctx.get("attachments"));
 		const controller = new AbortController();

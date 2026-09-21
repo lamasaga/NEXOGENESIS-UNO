@@ -26,6 +26,7 @@ const props={
   onSelectConversation:()=>undefined,
   onRenameConversation:async()=>true,
   onDeleteConversation:async()=>true,
+  onDeleteConversations:async(threads: Array<{id:string}>)=>({deletedIds:threads.map(thread=>thread.id),failures:[]}),
   onTogglePinned:async()=>true,
   onClearPipelineConversation:async()=>true,
   pipelineThreads:{},
@@ -55,5 +56,15 @@ describe("Sidebar",()=>{
     expect(html).toContain('aria-label="建构"');
     expect(html).toContain('aria-label="设置"');
     expect(html).toContain("9+");
+  });
+
+  it("offers batch deletion when conversations are available",()=>{
+    const html=renderToString(<Sidebar {...props} conversations={[
+      {id:"conversation-1",title:"第一段对话",updated_at:"2026-09-21T00:00:00Z"},
+      {id:"conversation-2",title:"置顶对话",updated_at:"2026-09-21T00:00:01Z",pinned:true},
+    ]} collapsed={false}/>);
+    expect(html).toContain("批量删除");
+    expect(html).toContain("置顶对话");
+    expect(html).toContain("其他对话");
   });
 });

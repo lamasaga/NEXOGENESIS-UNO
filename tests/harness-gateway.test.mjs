@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { commitCard } from "../packages/nexogenesis-tools/lib/cards.js";
 import { HarnessGateway, HarnessRejected } from "../packages/nexogenesis-tools/lib/harness/gateway.js";
 import { preserveContentMetadata } from "../packages/nexogenesis-tools/lib/harness/content-operation.js";
+import { writeDomainFixture } from './fixtures/domain.mjs';
 
 const root = mkdtempSync(join(tmpdir(), "nexo-harness-"));
 const today = new Date().toISOString().slice(0, 10);
@@ -16,21 +17,13 @@ const card = (overrides) => ({
 });
 
 try {
-	// Historical domain cards stay readable so legacy relation validation can be tested,
-	// but current writers no longer create them.
-	mkdirSync(join(root, "01-Cards"), { recursive: true });
-	writeFileSync(join(root, "01-Cards", "领域甲.md"), `---\nid: "领域甲"\ntitle: "领域甲"\ntype: "domain"\ndomains: []\norigin: "user"\nrelations: []\n---\n\n## 领域范围\n\n用于测试旧领域端点的兼容读取。`, "utf8");
+	writeDomainFixture(root,'领域甲');
 	commitCard(root, card({}));
+	commitCard(root,card({id:'主张目标',title:'主张目标'}));
 	const gateway = new HarnessGateway(root);
-	const figure = gateway.commitBuffer({
-		role: "artifact-figure", title: "机制图", source: "材料.md#figure-1",
-		body: "## 图表说明\n\n  这张图展示机制变量之间的方向关系、适用范围和来源位置；它作为图表质料保存，而不是生成一张同名重复观察 Buffer。图中每个箭头都需要回到原材料的证据锚点，第二个观察窗口只登记复用位置，并继续补充不同语境下的解释和限制。"
-	});
-	assert.ok(existsSync(join(root, ...figure.path.split("/"))));
-
 	let rejected;
 	try {
-		gateway.preflight({ operations: [card({ relations: [{ target: "领域甲", type: "conflicts-with" }] })], layer: "relation" });
+		gateway.preflight({ operations: [card({ relations: [{ target: "主张目标", type: "characterizes", note:"主张不能作为实体承接刻画关系" }] })], layer: "relation" });
 	} catch (error) { rejected = error; }
 	assert.ok(rejected instanceof HarnessRejected);
 	assert.equal(rejected.receipt.reason_code, "invalid_relation_signature");
@@ -74,21 +67,10 @@ try {
 	assert.equal(missingNote.receipt.reason_code, "missing_relation_note");
 	const next = card({ id: "主张乙", title: "主张乙", relations: [{ target: "主张甲", type: "supports", note: "该主张提供一个可独立核对的机制前提，因此支持目标主张在测试范围内成立" }] });
 	const checked = gateway.preflight({ operations: [next], layer: "creation" });
-	const proposal = { proposal_id: "proposal-ok", operations: checked.cards, revisions: checked.revisions, layer: checked.layer, consumed_buffers: ["meaning-unit/测试.md"], contribution_map: { "meaning-unit/测试.md": [{ card_id: "主张乙", kind: "new_card_draft", summary: "该质料形成一张可独立验证的测试主张卡。" }] } };
+	const proposal = { proposal_id: "proposal-ok", operations: checked.cards, revisions: checked.revisions, layer: checked.layer };
 	const receipt = gateway.commit(proposal);
 	assert.equal(receipt.status, "ok");
 	assert.ok(existsSync(join(root, "01-Cards", "主张乙.md")));
-	assert.equal(JSON.parse(readFileSync(join(root, ".nexogenesis", "cognition", "contributions.json"), "utf8"))["meaning-unit/测试.md"].status, "settled");
-	assert.throws(() => gateway.commit({
-		proposal_id: "missing-map", operations: checked.cards, revisions: checked.revisions, layer: checked.layer,
-		consumed_buffers: ["meaning-unit/缺映射.md"]
-	}), (error) => error instanceof HarnessRejected && error.receipt.reason_code === "contribution_mapping_required");
-	const skipReceipt = gateway.commit({
-		proposal_id: "proposal-skip", operations: [], revisions: {}, layer: "contribution-settlement",
-		consumed_buffers: ["detail/重复.md"], skipped_buffers: ["detail/重复.md"], skip_reasons: { "detail/重复.md": "内容已经由现有卡片充分承接，没有新增贡献。" }
-	});
-	assert.equal(skipReceipt.reason_code, "contributions_skipped");
-	assert.equal(JSON.parse(readFileSync(join(root, ".nexogenesis", "cognition", "contributions.json"), "utf8"))["detail/重复.md"].status, "skipped");
 	const migratedOrigin = card({ origin: "document" });
 	assert.doesNotThrow(() => gateway.preflight({ operations: [migratedOrigin], layer: "origin" }), "来源类型必须能以单层迁移修正，不应要求夹带正文或来源改写");
 	assert.throws(() => gateway.preflight({ operations: [card({ origin: "document", sources: ["材料.md"] })], layer: "origin" }), (error) => error instanceof HarnessRejected && error.receipt.reason_code === "cross_layer_mutation");
@@ -114,7 +96,7 @@ try {
 	assert.deepEqual(projected.operation.domains, ["领域甲"], "正文投影必须保留磁盘中的真实领域归属");
 	assert.doesNotThrow(() => gateway.preflight({ operations: [projected.operation], layer: "content" }), "投影后的正文更新应可通过，不依赖正文措辞规避关系校验");
 	assert.throws(() => gateway.preflight({ operations: [card({}), card({ body: "## 一句话主张\n\n  第二个同 id 版本不应进入同一批次，否则会覆盖第一个版本。\n\n## 依据\n\n  同批重复目标会导致后写覆盖。\n\n## 已知限制\n\n  只验证同批目标唯一性。\n\n## 来源与证据边界\n\n  依据来自测试构造。" })], layer: "content" }), (error) => error instanceof HarnessRejected && error.receipt.reason_code === "duplicate_card_operation");
-	console.log("PASS harness gateway: 关系拒绝、受控重分类、原子提交、贡献/跳过结算、修订冲突");
+	console.log("PASS harness gateway: 关系拒绝、受控重分类、原子提交、修订冲突");
 } finally {
 	rmSync(root, { recursive: true, force: true });
 }

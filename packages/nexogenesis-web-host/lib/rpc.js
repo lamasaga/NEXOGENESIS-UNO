@@ -48,8 +48,12 @@ export function assertTrustedRequest(req, trustedHosts = [], { csrfToken } = {})
 	}
 	const hostname = authority?.hostname;
 	if (hostname === void 0) throw new HttpError(403, "forbidden");
+	const hostLower=host?.toLowerCase(),hostnameLower=hostname.toLowerCase();
 	const trustedHost = isLoopbackHostname(hostname)
-		|| trustedHosts.some((entry) => entry.toLowerCase() === host?.toLowerCase());
+		|| trustedHosts.some((entry) => {
+			const candidate=entry.toLowerCase();
+			return candidate===hostLower||(!candidate.includes(':')&&candidate===hostnameLower);
+		});
 	if (!trustedHost) throw new HttpError(403, "forbidden");
 
 	const origin = singleHeader(req.headers.origin);

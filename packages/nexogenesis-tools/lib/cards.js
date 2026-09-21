@@ -208,8 +208,8 @@ export function scanCards(root, { includeExamples = false, includeInactive = fal
 }
 
 /** Return the current in-process snapshot version for GraphOps cache coordination. */
-export function cardSnapshotVersion(root, { includeExamples = false } = {}) {
-	return cardSnapshots.get(snapshotKey(root, includeExamples))?.version ?? snapshotVersions.get(canonicalRoot(root)) ?? 0;
+export function cardSnapshotVersion(root, { includeExamples = false, includeInactive = false } = {}) {
+	return cardSnapshots.get(snapshotKey(root,includeExamples,includeInactive))?.version ?? snapshotVersions.get(canonicalRoot(root)) ?? 0;
 }
 
 /** Drop all cached card views after a successful write. */

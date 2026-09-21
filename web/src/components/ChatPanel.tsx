@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { AgentStep, ChatMessage, CognitiveInteraction, EmergenceCandidate, PipelineHistory, PipelineRunState, PipelineStage, SourceCard, WriteProposal } from "../api/client";
@@ -14,6 +14,9 @@ interface Props {
   conversationId?: string | null;
   title: string | null;
   messages: ChatMessage[];
+  hasOlderMessages?: boolean;
+  loadingOlderMessages?: boolean;
+  onLoadOlderMessages?: () => void;
   sending: boolean;
   choiceBusy?: boolean;
   work?: WorkItem;
@@ -34,25 +37,37 @@ interface Props {
 
 export function ChatPanel({ conversationId = null, title, messages, sending, proposals = [], candidates = [],
   confirmingId = null, pipelineStage, pipelineHistory, pipelineRun = null, onConfirmProposal, onPrepareCandidate,
-  choiceRequests = [], onChoose, onOpenCard, cognition = null, choiceBusy = false, work, onNativeAnswer }: Props) {
+  choiceRequests = [], onChoose, onOpenCard, cognition = null, choiceBusy = false, work, onNativeAnswer,
+  hasOlderMessages = false, loadingOlderMessages = false, onLoadOlderMessages }: Props) {
   const messagesRef = useRef<HTMLDivElement>(null);
   const previousConversationRef = useRef<string | null>(null);
+  const previousFirstMessageRef = useRef<string | null>(null);
+  const previousScrollHeightRef = useRef(0);
   const stickToBottomRef = useRef(true);
-  const visibleMessages = messages.filter((message) => message.content.trim() !== "");
-  const pipelineGroups = pipelineStage ? splitPipelineMessages(visibleMessages, pipelineStage) : null;
+  const visibleMessages = useMemo(() => messages.filter((message) => message.content.trim() !== ""), [messages]);
+  const pipelineGroups = useMemo(() => pipelineStage ? splitPipelineMessages(visibleMessages, pipelineStage) : null, [pipelineStage, visibleMessages]);
+  const firstMessageKey = visibleMessages[0] ? messageRenderKey(visibleMessages[0], 0) : null;
   const workPresentation = work ? presentWorkItem(work) : null;
   const workRecord = work?.uno_job_id ? work.detail.trim() : "";
   const showPending = () => messagesRef.current?.querySelector(".native-question, .user-choice-card, .proposal-card")?.scrollIntoView({ block: "start" });
 
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const switched = previousConversationRef.current !== conversationId;
     const panel = messagesRef.current;
-    if (panel && (switched || stickToBottomRef.current)) {
-      panel.scrollTo({ top: panel.scrollHeight, behavior: "auto" });
+    if (panel) {
+      const prepended = !switched && previousFirstMessageRef.current !== null
+        && previousFirstMessageRef.current !== firstMessageKey && !stickToBottomRef.current;
+      if (switched || stickToBottomRef.current) {
+        panel.scrollTo({ top: panel.scrollHeight, behavior: "auto" });
+      } else if (prepended) {
+        panel.scrollTop += panel.scrollHeight - previousScrollHeightRef.current;
+      }
+      previousScrollHeightRef.current = panel.scrollHeight;
     }
     previousConversationRef.current = conversationId;
-  }, [conversationId, messages, candidates.length, choiceRequests.length, proposals.length, sending]);
+    previousFirstMessageRef.current = firstMessageKey;
+  }, [conversationId, firstMessageKey, messages, candidates.length, choiceRequests.length, proposals.length, sending]);
 
   useEffect(() => { if (work?.native_question || choiceRequests.length || proposals.length) showPending(); }, [conversationId, work?.native_question?.rpc_id, choiceRequests.length, proposals.length]);
 
@@ -79,6 +94,10 @@ export function ChatPanel({ conversationId = null, title, messages, sending, pro
 
       {/* 消息区 */}
       <div ref={messagesRef} className="chat-panel__messages" onScroll={updateFollowState}>
+        {hasOlderMessages && <button type="button" className="conversation-history-more"
+          disabled={loadingOlderMessages} onClick={onLoadOlderMessages}>
+          {loadingOlderMessages ? "正在读取更早消息…" : "读取更早消息"}
+        </button>}
         {visibleMessages.length === 0 && !work?.uno_job_id && (pipelineStage ? (
           <PipelineThreadEmptyState stage={pipelineStage} />
         ) : (
@@ -89,14 +108,14 @@ export function ChatPanel({ conversationId = null, title, messages, sending, pro
           </p>
         ))}
         {pipelineGroups ? <>
-          {pipelineGroups.prefix.map((message, index) => <MessageView key={`prefix-${index}`} message={message} onOpenCard={onOpenCard} />)}
+          {pipelineGroups.prefix.map((message, index) => <MessageView key={`prefix-${messageRenderKey(message, index)}`} message={message} onOpenCard={onOpenCard} />)}
           {pipelineGroups.runs.map((run, index) => (
             <PipelineResultGroup key={`${run[0]?.ts ?? "run"}-${index}`} messages={run}
               position={pipelineGroups.runs.length - index - 1} open={index === pipelineGroups.runs.length - 1}
               phase={index === pipelineGroups.runs.length - 1 ? pipelineRun?.phase : undefined}
               onOpenCard={onOpenCard} />
           ))}
-        </> : visibleMessages.map((message, index) => <MessageView key={index} message={message} onOpenCard={onOpenCard} />)}
+        </> : visibleMessages.map((message, index) => <MessageView key={messageRenderKey(message, index)} message={message} onOpenCard={onOpenCard} />)}
         {workRecord && <section className="chat-work-record" aria-label="当前工作记录"><h3>当前工作记录</h3><p>{workRecord}</p></section>}
         <AnalysisDeliveryCard snapshot={cognition?.snapshot} onOpenCard={onOpenCard} />
         {candidates.map((candidate) => (
@@ -176,7 +195,7 @@ function PipelineResultGroup({ messages, position, open, phase, onOpenCard }: {
       <span className="pipeline-result__chevron" aria-hidden>›</span>
     </summary>
     <div className="pipeline-result__body">
-      {displayMessages.map((message, index) => <MessageView key={index} message={message} onOpenCard={onOpenCard} />)}
+      {displayMessages.map((message, index) => <MessageView key={messageRenderKey(message, index)} message={message} onOpenCard={onOpenCard} />)}
     </div>
   </details>;
 }
@@ -192,23 +211,30 @@ function PipelineSilentResult({ phase }: { phase?: PipelineRunState["phase"] }) 
   </div>;
 }
 
-function MessageView({ message, onOpenCard }: { message: ChatMessage; onOpenCard?: (cardId: string) => void }) {
-  const citationNumbers = message.role === "assistant" ? cardCitationNumbers(message.content) : new Map<string, number>();
-  if (message.role === "user") return <div className="flex justify-end">
+const MARKDOWN_PLUGINS = [remarkGfm];
+
+const MessageView = memo(function MessageView({ message, onOpenCard }: { message: ChatMessage; onOpenCard?: (cardId: string) => void }) {
+  const citationNumbers = useMemo(() => message.role === "assistant" ? cardCitationNumbers(message.content) : new Map<string, number>(), [message.content, message.role]);
+  const markdown = useMemo(() => cardCitationMarkdown(message.content), [message.content]);
+  if (message.role === "user") return <div className="chat-message flex justify-end">
     <div className="max-w-[85%] whitespace-pre-wrap rounded-lg rounded-br-sm bg-zinc-800 px-3.5 py-2 text-[13px] leading-5 text-zinc-100">{message.content}</div>
   </div>;
-  if (message.role === "assistant") return <div className="assistant-turn">
+  if (message.role === "assistant") return <div className="chat-message assistant-turn">
     {message.intent?.action === "retrieve" && <details className="source-trace"><summary>本轮问题判断</summary><p className="text-[12px] text-zinc-400">{message.intent.judgment}</p></details>}
     <div className="md-body px-1 text-[13px] leading-6 text-zinc-200">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={citationUrlTransform} components={{
+      <ReactMarkdown remarkPlugins={MARKDOWN_PLUGINS} urlTransform={citationUrlTransform} components={{
         a: ({ href, children }) => <CardCitationLink href={href} citationNumber={citationNumbers.get(cardIdFromCitationHref(href) ?? "")} onOpenCard={onOpenCard}>{children}</CardCitationLink>,
-      }}>{cardCitationMarkdown(message.content)}</ReactMarkdown>
+      }}>{markdown}</ReactMarkdown>
       {message.status && message.status !== "completed" && <p className="text-[12px] text-amber-200" role="status">{message.status === "aborted" ? "回答已停止" : "回答未完整结束"}{message.detail ? "：" + message.detail : ""}</p>}
     </div>
     {message.sources?.length ? <SourceChips cards={message.sources} onOpenCard={onOpenCard} /> : null}
     {message.tool_trace?.length ? <ToolTrace steps={message.tool_trace} /> : null}
   </div>;
-  return <div className="border-l-2 border-sky-400/55 pl-3 text-[12px] leading-5 text-zinc-500">{message.content}</div>;
+  return <div className="chat-message border-l-2 border-sky-400/55 pl-3 text-[12px] leading-5 text-zinc-500">{message.content}</div>;
+});
+
+function messageRenderKey(message: ChatMessage, index: number) {
+  return message.id ?? `${message.role}:${message.ts ?? "pending"}:${index}`;
 }
 
 function PipelineHistoryCard({ history }: { history: PipelineHistory }) {

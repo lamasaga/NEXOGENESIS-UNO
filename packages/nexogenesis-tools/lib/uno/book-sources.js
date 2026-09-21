@@ -12,6 +12,7 @@ export const BOOK_WORKFLOWS = Object.freeze([BOOK_WORKFLOW, LEGACY_BOOK_WORKFLOW
 export const isBookWorkflow = value => BOOK_WORKFLOWS.includes(value);
 export const BOOK_UNIT_TARGET_CHARS = 60000;
 export const BOOK_UNIT_MAX_BYTES = 240000;
+export const BOOK_UNIT_MAX_CHARS = 90000;
 const fail = (code, message) => { throw Object.assign(new Error(message), { code }); };
 const count = text => Array.from(text).length;
 const canonical = value => Array.isArray(value) ? value.map(canonical)
@@ -31,15 +32,15 @@ function paragraphs(text) {
 // Physical delivery units preserve the exact text and original chapter identity.
 // A paragraph that cannot fit is continued at a sentence boundary or hard cap;
 // the author still decides semantic card boundaries across these units.
-function splitChapter(chapter) {
+function splitChapter(chapter, unitCharLimit) {
   const chars = Array.from(chapter.text), ends = paragraphs(chapter.text), parts = [];
   let start = 0, boundary = 0;
   while (start < chars.length) {
     while (ends[boundary] <= start) boundary++;
     let cap = start, bytes = 0;
-    while (cap < chars.length && cap - start < BOOK_UNIT_TARGET_CHARS) {
+    while (cap < chars.length && cap - start < unitCharLimit) {
       const cp = chars[cap].codePointAt(0), size = cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;
-      if (bytes + size > BOOK_UNIT_MAX_BYTES) break;
+      if (bytes + size > unitCharLimit * 4) break;
       bytes += size; cap++;
     }
     let end = cap, split_reason = cap === chars.length ? 'chapter-end' : 'hard-limit';
@@ -69,7 +70,9 @@ function immutableWrite(root, writes, ref, content) {
   } else writes.set(ref, bytes);
 }
 
-export function prepareBookSource(root, { source, prepared }) {
+export function prepareBookSource(root, { source, prepared, unit_char_limit = BOOK_UNIT_TARGET_CHARS }) {
+  if (!Number.isInteger(unit_char_limit) || unit_char_limit < 12000 || unit_char_limit > BOOK_UNIT_MAX_CHARS)
+    fail('INVALID_SOURCE', `原文单元字符上限须为 12000–${BOOK_UNIT_MAX_CHARS}。`);
   if (typeof source !== 'string' || !source.startsWith('00-Inbox/')) fail('INVALID_SOURCE', '图书必须来自当前知识库 Inbox。');
   const original = readFileSync(unoPath(root, source)), sourceRevision = sha(original);
   if (!prepared || prepared.fingerprint !== sourceRevision) fail('REVISION_CONFLICT', '预处理结果与原书当前版本不一致。');
@@ -97,7 +100,7 @@ export function prepareBookSource(root, { source, prepared }) {
   const sourceRef = `03-Archive/books/${sourceRevision}/original${extension}`;
   const title = String(prepared.title || basename(source, extname(source)));
   const descriptor = canonical({ version: 1, source_ref: sourceRef, title, chapters,
-    unit_segmentation: { version: 4, max_chars: BOOK_UNIT_TARGET_CHARS, max_utf8_bytes: BOOK_UNIT_MAX_BYTES },
+    unit_segmentation: { version: 5, max_chars: unit_char_limit, max_utf8_bytes: unit_char_limit * 4 },
     format: prepared.format ?? '', source_metadata: prepared.source_metadata ?? '',
     segmentation: prepared.segmentation ?? null, changes: prepared.changes ?? {}, incomplete: prepared.incomplete === true,
     warnings: prepared.warnings ?? [], external_images: prepared.external_images ?? [],
@@ -113,7 +116,7 @@ export function prepareBookSource(root, { source, prepared }) {
   const warnings = [...descriptor.warnings];
   const records = [], units = [];
   for (const [chapter_index, chapter] of chapters.entries()) {
-    const pieces = splitChapter(chapter);
+    const pieces = splitChapter(chapter, unit_char_limit);
     if (pieces.some(piece => ['sentence', 'hard-limit'].includes(piece.continuation.split_reason)))
       warnings.push(`${chapter.title} 含超长段落，已按句尾或物理上限连续分块，完整原文无删减；同章各块需连贯理解。`);
     for (const [index, piece] of pieces.entries()) {
@@ -141,7 +144,8 @@ export function prepareBookSource(root, { source, prepared }) {
   const catalogUnits = legacyRepresentation ? units.map(unit => ({ ...unit, ref: unit.ref.replace(base, legacyBase) })) : units;
   const catalog = unoMarkdown({ kind: 'uno-book-catalog-v1', source_ref: sourceRef, source_revision: sourceRevision,
     extraction_revision: extractionRevision, title, format: descriptor.format, source_metadata: descriptor.source_metadata,
-    warnings, incomplete: descriptor.incomplete, assets: evidenceAssets, external_images: descriptor.external_images, units: catalogUnits },
+    warnings, incomplete: descriptor.incomplete, unit_segmentation:descriptor.unit_segmentation,
+    assets: evidenceAssets, external_images: descriptor.external_images, units: catalogUnits },
   catalogUnits.map(unit => `- [${unit.title} · ${unit.part}/${unit.parts}](${unit.ref}) — ${unit.locator}`).join('\n'));
   const key = `book-source-buffer-v1:${sourceRevision}:${extractionRevision}:${sha(source).slice(0, 16)}`;
   // Even a replay detects external alteration of a supposedly immutable archive.

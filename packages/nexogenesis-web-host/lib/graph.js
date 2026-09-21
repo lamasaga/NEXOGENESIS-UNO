@@ -17,13 +17,13 @@ import { resolveKnowledgeRef, knowledgeRef } from './project-knowledge.js';
  * subset is what makes the main surface loadable now.
  */
 import { readdirSync, statSync, existsSync } from "node:fs";
-import { join } from "node:path";
-import { loadCards as loadKnowledgeCards, parseCardFile } from "../../nexogenesis-tools/lib/cards.js";
+import { join, resolve } from "node:path";
+import { cardSnapshotVersion, loadCards as loadKnowledgeCards, parseCardFile } from "../../nexogenesis-tools/lib/cards.js";
 import { displayType } from "../../nexogenesis-tools/lib/uno-contract.js";
 import { CARD_CLASSIFICATION_CONTRACT, CARD_TYPES, CARD_TYPE_LABELS } from '../../nexogenesis-tools/lib/uno/card-classification.js';
 import { HttpError, json } from "./rpc.js";
 import { ensureLayoutAsync, LAYOUT_VERSION } from "./layout.js";
-import { readMaterial, listDomainsV2, readKnowledgeCard, resolveCardTarget } from '../../nexogenesis-tools/lib/uno/knowledge.js';
+import { readMaterial, listDomainsV2, resolveCardTarget } from '../../nexogenesis-tools/lib/uno/knowledge.js';
 import { activeDomain } from '../../nexogenesis-tools/lib/uno/domain-contract.js';
 import { buildDomainEdges, domainReadingDetail } from './domain-view.js';
 
@@ -40,8 +40,8 @@ function listMarkdown(dir) {
 }
 
 /** Load all active cards from 01-Cards/ (id-keyed). */
-function loadCards(root) {
-	return loadKnowledgeCards(root);
+function loadCards(root,options) {
+	return loadKnowledgeCards(root,options);
 }
 
 /** Primary domain helper mirroring the original Python `_primary_domain`. */
@@ -63,6 +63,23 @@ function relationshipIndex(cards, root) {
 		}
 	}
 	return related;
+}
+
+const graphIndexes=new Map();
+function graphIndex(root,cards=loadCards(root),{includeInactive=false}={}){
+	const key=resolve(root)+(includeInactive?'\u0000history':''),version=cardSnapshotVersion(root,{includeInactive}),cached=graphIndexes.get(key);
+	if(cached?.version===version)return cached;
+	const domains=listDomainsV2(root),domainTitles=new Map(domains.map(domain=>[domain.id,domain.title]));
+	const relationsByCard=relationshipIndex(cards,root);
+	const titleOf=id=>String(cards.get(id)?.meta.title??domainTitles.get(id)??id);
+	const searchText=new Map();
+	for(const [id,card] of cards){
+		const meta=card.meta,relations=relationsByCard.get(id)??[];
+		searchText.set(id,[id,meta.title,displayType(meta),CARD_TYPE_LABELS[displayType(meta)]??'',(meta.domains??[]).join(' '),
+			relations.map(item=>`${item.type} ${item.target} ${titleOf(item.target)} ${item.note}`).join(' '),card.body].join(' ').toLocaleLowerCase('zh-CN'));
+	}
+	const value={version,domains,domainTitles,relationsByCard,titleOf,searchText,edges:computeGraphEdges(root,cards)};
+	graphIndexes.set(key,value);return value;
 }
 
 function plainExcerpt(body, query) {
@@ -112,14 +129,13 @@ function facetCounts(values, labelOf = (value) => value) {
  */
 export function buildCardCatalog(projectRoot, options = {}) {
 	const cards = loadCards(projectRoot);
-	const relationsByCard = relationshipIndex(cards, projectRoot);
+	const index=graphIndex(projectRoot,cards),relationsByCard=index.relationsByCard;
 	const domainFilter = String(options.domain ?? "");
-	const domainTitles = new Map(listDomainsV2(projectRoot).map(d=>[d.id,d.title]));
-	const domainDocs = listDomainsV2(projectRoot), children = new Map();
+	const domainTitles=index.domainTitles,domainDocs=index.domains,children = new Map();
 	for (const domain of domainDocs) for (const parent of domain.parents ?? []) children.set(parent,[...(children.get(parent)??[]),domain.id]);
 	const acceptedDomains = new Set(domainFilter ? [domainFilter] : []);
 	for (const id of acceptedDomains) for (const child of children.get(id) ?? []) acceptedDomains.add(child);
-	const titleOf = (id) => String(cards.get(id)?.meta.title ?? domainTitles.get(id) ?? id);
+	const titleOf=index.titleOf;
 	const query = String(options.query ?? "").trim().toLocaleLowerCase("zh-CN");
 	const tokens = query.split(/\s+/).filter(Boolean);
 	const typeFilter = String(options.type ?? "");
@@ -134,9 +150,7 @@ export function buildCardCatalog(projectRoot, options = {}) {
 		if (typeFilter && type !== typeFilter) continue;
 		if (domainFilter && !domains.some(id=>acceptedDomains.has(id))) continue;
 		if (relationFilter && !relations.some((item) => item.type === relationFilter)) continue;
-		const relationText = relations.map((item) => `${item.type} ${item.target} ${titleOf(item.target)} ${item.note}`).join(" ");
-		const searchable = [id, meta.title, type, CARD_TYPE_LABELS[type] ?? '', domains.join(" "), relationText, card.body]
-			.join(" ").toLocaleLowerCase("zh-CN");
+		const searchable=index.searchText.get(id)??'';
 		if (tokens.some((token) => !searchable.includes(token))) continue;
 		items.push({
 			id,
@@ -181,8 +195,7 @@ export function buildCardCatalog(projectRoot, options = {}) {
  * @param root - knowledge-body root.
  * @returns edges array (from/to/kind/relation_type/bundle/id).
  */
-export function buildGraphEdges(root) {
-	const cards = loadCards(root);
+function computeGraphEdges(root,cards) {
 	const domainOf = new Map();
 	for (const [id, card] of cards) {
 		const domains = Array.isArray(card.meta.domains) ? card.meta.domains : [];
@@ -208,6 +221,9 @@ export function buildGraphEdges(root) {
 	edges.forEach((edge, i) => { edge.id = `e${i}`; });
 	return edges;
 }
+export function buildGraphEdges(root,cards=loadCards(root)) {
+	return graphIndex(root,cards).edges;
+}
 
 /** GET /api/graph → GraphData (mirrors build_graph_payload + force layout). */
 export async function handleGraphGet(ctx, _req, res, _trustedHosts, projectRoot) {
@@ -223,8 +239,8 @@ export async function handleGraphGet(ctx, _req, res, _trustedHosts, projectRoot)
 		});
 	}
 	//  拓扑变化触发后台重排，避免阻塞对话；无变化则复用坐标缓存。
-	const edges = buildGraphEdges(projectRoot);
-  const domainDocs=listDomainsV2(projectRoot);
+	const index=graphIndex(projectRoot,cards),edges=[...index.edges];
+	const domainDocs=index.domains;
   for(const d of domainDocs.filter(activeDomain)) nodes.push({id:'domain:'+d.id,title:d.title,type:'domain',domains:[]});
   edges.push(...buildDomainEdges(domainDocs));
 	const positions = await ensureLayoutAsync(projectRoot, nodes, edges);
@@ -245,12 +261,13 @@ export async function handleGraphGet(ctx, _req, res, _trustedHosts, projectRoot)
  */
 export function buildGraphOverview(projectRoot) {
 	const cards = loadCards(projectRoot);
+	const index=graphIndex(projectRoot,cards);
 	const nodesByType = new Map();
 	for (const card of cards.values()) {
 		const type = displayType(card.meta);
 		nodesByType.set(type, (nodesByType.get(type) ?? 0) + 1);
 	}
-	const edges = buildGraphEdges(projectRoot);
+	const edges = index.edges;
 	const relationsByType = new Map();
 	for (const edge of edges) {
 		const type = String(edge.relation_type ?? edge.kind ?? "relation");
@@ -310,6 +327,9 @@ function archivedBookUnit(root, ref) {
   const catalogFile = bookEvidencePath(root, base + '/catalog.md');
   if (!existsSync(file) || !existsSync(catalogFile)) throw new HttpError(404, '整理后的图书原文未找到');
   const unit = parseCardFile(file), catalog = parseCardFile(catalogFile);
+  const unitLimit = Number.isInteger(catalog.meta.unit_segmentation?.max_chars)
+    && catalog.meta.unit_segmentation.max_chars >= 12000 && catalog.meta.unit_segmentation.max_chars <= 90000
+    ? catalog.meta.unit_segmentation.max_chars : 60000;
   const expected = Array.isArray(catalog.meta.units) && catalog.meta.units.find(row => sameBookUnitSource(row.ref, ref));
   const originalPattern = new RegExp(`^03-Archive/books/${match[1]}/original\\.[a-z0-9]{1,10}$`);
   if (unit.meta.kind !== 'uno-book-unit-v1' || catalog.meta.kind !== 'uno-book-catalog-v1'
@@ -318,7 +338,8 @@ function archivedBookUnit(root, ref) {
     || typeof unit.meta.source_ref !== 'string' || !originalPattern.test(unit.meta.source_ref)
     || catalog.meta.source_ref !== unit.meta.source_ref || !expected || expected.revision !== bookEvidenceRevision(root, ref)
     || unit.meta.content_revision !== sha(unit.body) || expected.content_revision !== unit.meta.content_revision
-    || unit.meta.chars !== Array.from(unit.body).length || unit.meta.chars > 60000)
+    || unit.meta.chars !== Array.from(unit.body).length
+    || unit.meta.chars > unitLimit)
     throw new HttpError(409, '原文单元与目录或版本不一致，不能显示为已核验的来源');
   if (!existsSync(unoPath(root, unit.meta.source_ref))) throw new HttpError(404, '归档原书未找到');
   return { ...unit, book_title: String(catalog.meta.title ?? '归档图书'), base };
@@ -345,7 +366,7 @@ export async function handleCardGet(ctx, _req, res, _trustedHosts, projectRoot, 
     if(!match||!Number.isSafeInteger(Number(match[2])))throw new HttpError(400,'图书原文引用无效');
     const unit=archivedBookUnit(projectRoot,match[1]),chars=Array.from(unit.body),offset=Number(match[2]);
     if(offset>chars.length)throw new HttpError(400,'原文位置超出当前阅读单元');
-    const text=chars.slice(offset,offset+60000).join('');
+    const text=chars.slice(offset,offset+(unit.meta.chars>60000?90000:60000)).join('');
     return json(res,200,{id:resolved.scope?knowledgeRef(resolved.scope,id):id,title:unit.meta.title??'图书原文',
       type:'source',domains:[],domain_titles:{},relations:[],maturity:'原文',updated:'',
       summary:`${unit.book_title} · ${unit.meta.locator??unit.meta.chapter_locator??''} · 当前单元字符 ${offset}–${offset+Array.from(text).length}/${chars.length}`,
@@ -361,14 +382,14 @@ export async function handleCardGet(ctx, _req, res, _trustedHosts, projectRoot, 
       ...domainReadingDetail(domain,domains,loadCards(projectRoot),qualify) });
   }
 	if(id.startsWith('buffer:')){const match=/^buffer:(05-Buffer\/(?:themes\/_sources\/.+|_index\/[^/]+)\.md):(\d+)$/.exec(id);if(!match)throw new HttpError(400,'原文引用无效');const unit=readMaterial(projectRoot,match[1],Math.max(0,Number(match[2])-200),30000);return json(res,200,{id:resolved.scope?knowledgeRef(resolved.scope,id):id,title:unit.title??'原文细节',type:'source',domains:[],domain_titles:{},relations:[],maturity:'source',updated:'',body:unit.text+(unit.truncated?'\n\n（本次显示已截断，可在编译工具中继续读取。）':''),sources:[unit.source+'；'+unit.locator]});}
-	const cards = loadCards(projectRoot);
-	const card = readKnowledgeCard(projectRoot,id);
+	const cards = loadCards(projectRoot,{includeInactive:true});
+	const card = cards.get(id);
 	if (card === void 0) throw new HttpError(404, `卡片不存在: ${id}`);
 	const meta = card.meta;
   const assets=[],seenAssets=new Set(),seenSources=new Set();
   const visit=ref=>{try{const file=ref.split('#')[0];if(seenSources.has(file))return;seenSources.add(file);const parsed=BOOK_UNIT_REF.test(file)?archivedBookUnit(projectRoot,file):file.startsWith('05-Buffer/')?readUnoUnit(projectRoot,file):file.startsWith('03-Archive/aggregates/')?parseCardFile(unoPath(projectRoot,file)):null;if(!parsed)return;for(const a of parsed.base?bookUnitAssets(parsed,projectRoot,resolved.scope,true):parsed.meta.assets??[]){if(!card.body.includes(a.ref)&&!(meta.assets??[]).some(item=>(typeof item==='string'?item:item.ref)===a.ref))continue;if(seenAssets.has(a.ref))continue;seenAssets.add(a.ref);assets.push({...a,url:scopedAssetUrl(a.ref,resolved.scope)});}for(const source of parsed.meta.sources??[])visit(source);}catch{}}
   for(const source of meta.sources??[])visit(source);
-	const relations = relationshipIndex(cards,projectRoot).get(id) ?? [];
+	const relations = graphIndex(projectRoot,cards,{includeInactive:true}).relationsByCard.get(id) ?? [];
 	const domainTitles=new Map(listDomainsV2(projectRoot).map(d=>[d.id,d.title]));
 	const titleOf = (target) => String(cards.get(target)?.meta.title ?? domainTitles.get(target) ?? target);
 	const domains = Array.isArray(meta.domains) ? meta.domains : [];

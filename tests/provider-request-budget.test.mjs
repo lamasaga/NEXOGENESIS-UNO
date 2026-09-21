@@ -181,10 +181,11 @@ test('late old session/stage cannot dispatch; an already dispatched attempt sett
 test('same-session stage change during credential await cannot silently charge the new role', async t => {
   const f = fixture(t); let resolveCredential, sent = 0;
   f.ctx.credentials.resolve = () => new Promise(resolve => { resolveCredential = resolve; });
-  const adapter = new NexoModelAdapter(f.ctx, async () => { sent++; return answer(); });
-  const pending = collect(adapter.stream(options()));
-  f.bind('author', 'reviewer', { stageLimit: 4 });
-  resolveCredential({ value: 'synthetic-key-never-networked' });
+	const adapter = new NexoModelAdapter(f.ctx, async () => { sent++; return answer(); });
+	const pending = collect(adapter.stream(options()));
+	f.bind('author', 'reviewer', { stageLimit: 4 });
+	while(!resolveCredential)await new Promise(resolve=>setImmediate(resolve));
+	resolveCredential({ value: 'synthetic-key-never-networked' });
   await assert.rejects(pending, { code: 'UNO_BUDGET_STALE_STAGE' });
   assert.equal(sent, 0); assert.equal(f.status().used, 0);
 });

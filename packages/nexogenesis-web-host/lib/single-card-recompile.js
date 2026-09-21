@@ -15,6 +15,7 @@ import { readCompileJob, saveCompileJob } from '../../nexogenesis-tools/lib/uno/
 import { assertBoundedModel, budgetStopCode } from './uno-orchestration.js';
 import { broadcastGraphEvent } from './events-bus.js';
 import { parseUnitJSON } from './unit-card-request.js';
+import { workflowCharLimit, workflowOutputLimit, workflowReasoning } from './workflow-limits.js';
 
 export const SINGLE_CARD_RECOMPILE_CONTRACT = 'single-card-source-rewrite-v2';
 const LEGACY_SINGLE_CARD_RECOMPILE_CONTRACT = 'single-card-source-rewrite-v1';
@@ -85,8 +86,9 @@ export function singleCardSnapshot(root, job) {
   });
   if (!sources.length) throw fail('目标卡片没有可回查来源，未发送重编译请求。', 'SINGLE_CARD_SOURCE_MISSING');
   const sourceChars = sources.reduce((total, row) => total + chars(row.text), 0);
-  if (sourceChars > CONTEXT_LIMIT)
-    throw fail(`目标卡片的已绑定来源片段共 ${sourceChars} 字符，超过 ${CONTEXT_LIMIT} 字符；未截断或发送。`, 'SINGLE_CARD_CONTEXT_LIMIT');
+  const limit=workflowCharLimit(job,'source_chars',CONTEXT_LIMIT);
+  if (sourceChars > limit)
+    throw fail(`目标卡片的已绑定来源片段共 ${sourceChars} 字符，超过 ${limit} 字符；未截断或发送。`, 'SINGLE_CARD_CONTEXT_LIMIT');
   return { id, ref, revision, original:{ ...formal.meta, body:formal.body }, sources, source_chars:sourceChars };
 }
 
@@ -94,9 +96,11 @@ function request(job, phase, system, context, sourceFragments, maxTokens, reason
   const contextText = JSON.stringify(context), sourceText = sourceFragments?.length ? '已绑定来源片段：\n' + JSON.stringify({source_fragments:sourceFragments}) : '';
   const sourceChars=(sourceFragments??[]).reduce((total,row)=>total+chars(row.text),0);
   const otherChars = chars(system) + chars(contextText) + Math.max(0, chars(sourceText) - sourceChars);
-  if (otherChars > CONTEXT_LIMIT) throw fail(`单卡重编译规则与卡片上下文共 ${otherChars} 字符，超过 ${CONTEXT_LIMIT} 字符；未发送。`, 'SINGLE_CARD_CONTEXT_LIMIT');
-  if(sourceChars>CONTEXT_LIMIT)throw fail(`单卡重编译来源片段共 ${sourceChars} 字符，超过 ${CONTEXT_LIMIT} 字符；未发送。`,'SINGLE_CARD_CONTEXT_LIMIT');
-  return { ...job.model_selection, reasoningEffort, system, messages:[user(contextText),...(sourceText?[user(sourceText)]:[])], tools:[], maxTokens,
+  const contextCap=workflowCharLimit(job,'context_chars',CONTEXT_LIMIT),sourceCap=workflowCharLimit(job,'source_chars',CONTEXT_LIMIT);
+  if (otherChars > contextCap) throw fail(`单卡重编译规则与卡片上下文共 ${otherChars} 字符，超过 ${contextCap} 字符；未发送。`, 'SINGLE_CARD_CONTEXT_LIMIT');
+  if(sourceChars>sourceCap)throw fail(`单卡重编译来源片段共 ${sourceChars} 字符，超过 ${sourceCap} 字符；未发送。`,'SINGLE_CARD_CONTEXT_LIMIT');
+  const effort=workflowReasoning(job,phase,reasoningEffort);
+  return { ...job.model_selection, ...(effort?{reasoningEffort:effort}:{}), system, messages:[user(contextText),...(sourceText?[user(sourceText)]:[])], tools:[], maxTokens:workflowOutputLimit(job,phase,maxTokens),
     nexoPrompt:{phase}, unit_context:{source_chars:sourceChars, other_chars:otherChars} };
 }
 

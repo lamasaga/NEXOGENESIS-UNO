@@ -61,6 +61,7 @@ export const COMPILE_HEALTH = {
   uno_isolated_repair_diagnosis: ISOLATED_REPAIR_DIAGNOSIS,
   uno_reference_delivery: '3-full-5-compact-v1',
   uno_workflow_reasoning: 1,
+  uno_provider_aware_limits: 'provider-aware-v1',
   uno_compile_card_refinement: COMPILE_QUALITY_REFINE_EACH_CARD,
   compile_quality_modes: COMPILE_QUALITY_MODES,
   uno_same_source_reuse: 1,
@@ -141,11 +142,12 @@ export async function prepareBookJob(root, initial, signal, preprocess = preproc
     job.detail = '正在提取原文与章节定位：' + source.split('/').at(-1); saveCompileJob(root, job);
     try {
       if (unoRevision(root, source) !== job.source_revisions[source]) throw new Error('选定后原书已变化，请新建任务处理新版本。');
-      const raw = await preprocess(root, source, signal, true, job.material_kind ?? 'auto');
+      const unitCharLimit=job.workflow_limits?.source_chars ?? 60000;
+      const raw = await preprocess(root, source, signal, true, job.material_kind ?? 'auto',unitCharLimit);
       const prepared = await archiveExternalImages(raw, job.requirements?.preferences?.external_images === true, signal);
       signal.throwIfAborted();
       if (prepared.fingerprint !== job.source_revisions[source]) throw new Error('提取期间原书已变化，未接收新版本。');
-      const result = gateway.prepareBookSource({ source, prepared });
+      const result = gateway.prepareBookSource({ source, prepared, unit_char_limit:unitCharLimit });
       job = readCompileJob(root, job.id);
       job.sources.push({ ...result, original_source: source });
       job.book_units.push(...result.units);

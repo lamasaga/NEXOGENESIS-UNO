@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { __resetGraphOverviewCacheForTests, __resetLocalRequestTokenForTests, cancelChat, confirmWrite, createConversation, createUnoDomainFromCard, deleteConversation, deleteUnoUnassignedCard, fetchCardCatalog, fetchCognitiveSession, fetchGraphOverview, fetchInboxDocuments, fetchProjects, fetchUnoUnassignedPool, invalidateGraphOverviewCache, organizeUnoUnassignedCard, readCachedGraphOverview, recompileUnoUnassignedCard, resetPipelineConversation, reviewUnoDomains, savePipelineAuthority, saveSettings, testModelConnection, sendChat, sendChatStream, stopPipelineJob, uploadInbox, startUnoJob, updateUnoJob, type UnoJob } from "./client";
+import { __resetGraphOverviewCacheForTests, __resetLocalRequestTokenForTests, cancelChat, confirmWrite, createConversation, createUnoDomainFromCard, deleteConversation, deleteConversations, deleteUnoUnassignedCard, fetchCardCatalog, fetchCognitiveSession, fetchGraphOverview, fetchInboxDocuments, fetchProjects, fetchUnoUnassignedPool, invalidateGraphOverviewCache, organizeUnoUnassignedCard, readCachedGraphOverview, recompileUnoUnassignedCard, resetPipelineConversation, reviewUnoDomains, savePipelineAuthority, saveSettings, testModelConnection, sendChat, sendChatStream, stopPipelineJob, uploadInbox, startUnoJob, updateUnoJob, type UnoJob } from "./client";
 import { prepareStart, pendingStart } from '../conversations/recovery';
 
 function mockFetch(impl: (url: string, init?: RequestInit) => unknown) {
@@ -173,6 +173,25 @@ describe("client", () => {
     }));
 
     await expect(deleteConversation("conversation-1")).resolves.toBeUndefined();
+  });
+
+  it("deleteConversations keeps successful deletions when one protected conversation fails", async () => {
+    const requested: string[] = [];
+    mockFetch((url) => {
+      requested.push(url);
+      if (url.endsWith("/running")) return { ok: false, status: 409, body: { detail: "请先停止任务，再删除对话。" } };
+      return { ok: true, body: { deleted: true } };
+    });
+
+    await expect(deleteConversations(["first", "running", "last", "first"])).resolves.toEqual({
+      deletedIds: ["first", "last"],
+      failures: [{ id: "running", message: "请先停止任务，再删除对话。" }],
+    });
+    expect(requested).toEqual([
+      "/api/conversations/first",
+      "/api/conversations/running",
+      "/api/conversations/last",
+    ]);
   });
 
   it("resetPipelineConversation requests a fresh fixed task conversation", async () => {

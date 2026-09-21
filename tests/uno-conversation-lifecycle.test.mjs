@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { EventEmitter } from 'node:events';
-import { cancelUnoShutdown, launch, prepareUnoShutdown, readUnoJob, isUnoJobRunning, hasUnoJobRunning, handleUnoApi, startUnoJob } from '../packages/nexogenesis-web-host/lib/uno-jobs.js';
+import { cancelUnoShutdown, launch, prepareUnoShutdown, readUnoJob, recoverInterruptedUnoJobs, isUnoJobRunning, hasUnoJobRunning, handleUnoApi, startUnoJob } from '../packages/nexogenesis-web-host/lib/uno-jobs.js';
 import { readCompileJob, saveCompileJob } from '../packages/nexogenesis-tools/lib/uno/state.js';
 import { executeConstruction } from '../packages/nexogenesis-web-host/lib/construction-host.js';
 import { handleChatCancel, handleChatStream } from '../packages/nexogenesis-web-host/lib/chat.js';
@@ -159,7 +159,7 @@ test('开始回执丢失后重试只返回原任务，暂停后重试也不自�
 
 test('进程失去执行句柄后读取恢复状态只标记中断，保留批次和收据，不发起模型调用',async t=>{
  const f=fixture(t),job=readUnoJob(f.root,'job');Object.assign(job,{status:'running',batch_index:1,phase:'organize',role:'reviewer',calls:[{status:'completed'},{status:'running'}],receipts:[{key:'saved-once'}]});saveCompileJob(f.root,job);
- const restored=readUnoJob(f.root,'job');assert.equal(restored.status,'paused');assert.equal(restored.batch_index,1);assert.equal(restored.role,'reviewer');assert.equal(restored.calls.length,2);assert.equal(restored.calls[0].status,'completed');assert.equal(restored.calls[1].status,'interrupted');assert.match(restored.calls[1].error,/不计入成果/);assert.equal(restored.receipts[0].key,'saved-once');assert.equal(f.calls.length,0);
+ recoverInterruptedUnoJobs(f.root);const restored=readUnoJob(f.root,'job');assert.equal(restored.status,'paused');assert.equal(restored.batch_index,1);assert.equal(restored.role,'reviewer');assert.equal(restored.calls.length,2);assert.equal(restored.calls[0].status,'completed');assert.equal(restored.calls[1].status,'interrupted');assert.match(restored.calls[1].error,/不计入成果/);assert.equal(restored.receipts[0].key,'saved-once');assert.equal(f.calls.length,0);
 });
 
 test('服务停止准备态拒绝运行中任务，并在封闸后阻止新任务启动',async t=>{

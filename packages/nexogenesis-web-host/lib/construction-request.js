@@ -1,6 +1,7 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { parseUnitJSON } from './unit-card-request.js';
 import { CONSTRUCTION_STRATEGY_CONTRACT } from '../../nexogenesis-tools/lib/uno/construction-strategy.js';
+import { workflowCharLimit, workflowOutputLimit } from './workflow-limits.js';
 
 export const CONSTRUCTION_CONTEXT_LIMIT = 60000;
 export const CONSTRUCTION_STRATEGY_CONTEXT_LIMIT = 24000;
@@ -10,7 +11,7 @@ export const CONSTRUCTION_REVIEW_NORMALIZATION = 'construction-review-normalize-
 const CONSTRUCTION_JSON_RECOVERY = Symbol('construction-json-recovery');
 const chars = value => Array.from(String(value ?? '')).length;
 const user = text => createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text }] });
-const base = (job, phase, maxTokens) => ({ ...job.model_selection, system: '', messages: [], tools: [], maxTokens,
+const base = (job, phase, maxTokens) => ({ ...job.model_selection, system: '', messages: [], tools: [], maxTokens:workflowOutputLimit(job,phase,maxTokens),
   nexoPrompt: { phase }, construction_context: { source_chars: 0, other_chars: 0 } });
 const assertContext = (system, text, message, limit = CONSTRUCTION_CONTEXT_LIMIT) => {
   const size = chars(system) + chars(text);
@@ -55,8 +56,9 @@ export function buildConstructionStrategyRequest(job, pool, domainCatalog = []) 
     controls: job.construction_controls, long_term_preferences: job.requirements?.long_term ?? '',
     domain_catalog: domainCatalog.map(row => ({ id: row.id, title: row.title, summary: row.summary, parents: row.parents ?? [] })).slice(0, 120),
     ...pool, candidates: pool.candidates.map(compactStrategyCandidate) };
-  const delivered = trimmedPool(payload, system, '本次建构输入：\n', CONSTRUCTION_STRATEGY_CONTEXT_LIMIT);
-  const size = assertContext(system, delivered.text, '建构策略上下文超过限制：', CONSTRUCTION_STRATEGY_CONTEXT_LIMIT);
+  const limit=workflowCharLimit(job,'strategy_chars',CONSTRUCTION_STRATEGY_CONTEXT_LIMIT);
+  const delivered = trimmedPool(payload, system, '本次建构输入：\n', limit);
+  const size = assertContext(system, delivered.text, '建构策略上下文超过限制：', limit);
   return { ...base(job, 'construction-strategy', 16384), system, messages: [user(delivered.text)],
     nexoPrompt: { phase: 'construction-strategy', ...(weaving ? { weaving_round: weaving.round } : {}) },
     construction_context: { source_chars: 0, other_chars: size }, delivered_pool: delivered.pool };
@@ -80,7 +82,7 @@ ${repairing ? '这是唯一一次局部修复，只为 repair_issues 指出的�
     package: compactPackage(pack), controls: compactControls(job.construction_controls), cards: evidence.cards, sources: evidence.sources,
     domains: evidence.domains, repair_issues };
   const text = '本次冻结工作包与证据：\n' + JSON.stringify(context);
-  const size = assertContext(system, text, '建构执行上下文超过限制：');
+  const size = assertContext(system, text, '建构执行上下文超过限制：',workflowCharLimit(job,'construction_chars',CONSTRUCTION_CONTEXT_LIMIT));
   return { ...base(job, repairing ? 'construction-repair' : 'construction-author', 32768), system, messages: [user(text)],
     construction_context: { source_chars: evidence.source_chars ?? 0, other_chars: size - (evidence.source_chars ?? 0) } };
 }
@@ -96,7 +98,7 @@ ${repair ? '这是修复后的唯一一次复核，只判断原问题是否解�
   const context = { strategy: pack.strategy ?? job.construction_plan?.strategy, package: compactPackage(pack),
     controls: compactControls(job.construction_controls), ...reviewInput };
   const text = '本次审核材料：\n' + JSON.stringify(context);
-  const size = assertContext(system, text, '建构审核上下文超过限制：');
+  const size = assertContext(system, text, '建构审核上下文超过限制：',workflowCharLimit(job,'construction_chars',CONSTRUCTION_CONTEXT_LIMIT));
   return { ...base(job, repair ? 'construction-verify' : 'construction-review', 16384), system, messages: [user(text)],
     construction_context: { source_chars: 0, other_chars: size } };
 }
@@ -111,7 +113,7 @@ export function buildConstructionResponseRecoveryRequest(job, { failedPhase, res
   const payload = { contract: CONSTRUCTION_RESPONSE_RECOVERY_CONTRACT, failed_phase: failedPhase, response_kind: kind,
     expected_ids: ids, validation_error: String(error ?? ''), failed_response: String(response ?? '') };
   const text = '待恢复的局部响应：\n' + JSON.stringify(payload);
-  const size = assertContext(system, text, '建构响应恢复上下文超过限制：');
+  const size = assertContext(system, text, '建构响应恢复上下文超过限制：',workflowCharLimit(job,'construction_chars',CONSTRUCTION_CONTEXT_LIMIT));
   return { ...base(job, 'construction-response-recovery', 8192), system, messages: [user(text)],
     nexoPrompt: { phase: 'construction-response-recovery', recovery_for: failedPhase, response_kind: kind },
     construction_context: { source_chars: 0, other_chars: size } };

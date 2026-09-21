@@ -7,10 +7,17 @@ import { isBookWorkflow } from './book-sources.js';
 import { STRATEGY_CONSTRUCTION_WORKFLOW } from './construction-strategy.js';
 export function jobRef(id) { if(!safeId(id))throw new Error('任务 ID 无效');return '.nexogenesis/uno-jobs/'+id+'.json'; }
 export function readCompileJob(root,id) { return JSON.parse(readFileSync(unoPath(root,jobRef(id)),'utf8')); }
-export function saveCompileJob(root,job) {
-  job.version=(job.version??0)+1;job.updated_at=new Date().toISOString();
-  const path=unoPath(root,jobRef(job.id));mkdirSync(dirname(path),{recursive:true});
-  const staging=path+'.'+randomUUID()+'.tmp';writeFileSync(staging,JSON.stringify(job));
+const CONTROL_FLAGS = ['pause_requested','end_requested','stop_after_batch'];
+export function saveCompileJob(root,job,{expectedVersion,resetControls=false}={}) {
+	const path=unoPath(root,jobRef(job.id));mkdirSync(dirname(path),{recursive:true});
+	let current=null;
+	if(existsSync(path))current=JSON.parse(readFileSync(path,'utf8'));
+	if(expectedVersion!==undefined&&(current?.version??0)!==expectedVersion){
+		const error=new Error('任务状态已变化，请刷新后重试。');error.code='UNO_JOB_VERSION_CONFLICT';throw error;
+	}
+	if(current&&!resetControls&&(current.version??0)>(job.version??0))for(const flag of CONTROL_FLAGS)if(current[flag]===true)job[flag]=true;
+	job.version=(current?.version??job.version??0)+1;job.updated_at=new Date().toISOString();
+	const staging=path+'.'+randomUUID()+'.tmp';writeFileSync(staging,JSON.stringify(job));
   try {
     for(let attempt=0;;attempt++)try{renameSync(staging,path);break;}catch(error){
       if(!['EPERM','EACCES','EBUSY'].includes(error.code)||attempt>=7)throw error;

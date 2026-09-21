@@ -72,7 +72,8 @@ test('book compile creates one full-book task with the actual request budget and
   assert.equal(job.domain_approval_mode,'automatic');
   assert.equal(job.compile_quality_mode,'standard');
   assert.deepEqual(job.model_selection,{provider:'nexo-deepseek',model:'deepseek-v4-flash'});
-  assert.deepEqual(job.workflow_reasoning,{generate:'low',supplement:'low',repair:'low',check:'off',verify:'off'});
+  assert.deepEqual(job.workflow_reasoning,{generate:'low',refine:'low',supplement:'low',collision:'low',repair:'low','relation-repair':'low',check:'off',verify:'off','relation-verify':'off',domain:'low','single-card-rewrite':'low','single-card-review':'off','single-card-repair':'low','single-card-verify':'off','single-card-domain-review':'low'});
+  assert.equal(job.workflow_limits.version,'provider-aware-v1');assert.equal(job.workflow_limits.source_chars,90000);assert.equal(job.workflow_limits.output_tokens.generate,98304);
   assert.equal(getProviderBudget(f.root,job.id).limit,4);assert.equal(getProviderBudget(f.root,job.id).used,0,'No actual model response was simulated');
   assert.equal(job.book_units.length,2);assert.equal(f.prompts.length,0);assert.equal(job.selection_workflow,undefined);
 });

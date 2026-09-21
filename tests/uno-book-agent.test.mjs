@@ -62,6 +62,15 @@ test('source and other context have independent Unicode limits, not a shared 128
  assert.throws(()=>buildUnitRequest(job,{...unit,body:unit.body+'字'},[],'generate'),/60001/);
  assert.throws(()=>buildUnitRequest({...job,notes:'字'.repeat(60000)},unit,[],'generate'),/其余上下文/);
 });
+test('new provider-aware jobs may use a larger frozen input and output budget',()=>{
+ const expanded={...job,workflow_limits:{source_chars:90000,context_chars:90000,output_tokens:{generate:98304,check:16384}},workflow_reasoning:{generate:'low',check:'off'}};
+ const large={...unit,body:'字'.repeat(90000)};
+ const generated=buildUnitRequest(expanded,large,[],'generate');
+ assert.equal(generated.unit_context.source_chars,90000);assert.equal(generated.maxTokens,98304);
+ assert.throws(()=>buildUnitRequest(expanded,{...large,body:large.body+'字'},[],'generate'),/90001\/90000/);
+ const checked=buildUnitRequest(expanded,unit,[],'check',{supplied_cards:[],relation_targets:[],review_scope:{kind:'cards',card_ids:[]}});
+ assert.equal(checked.maxTokens,16384);
+});
 test('fixed workflow reasoning and continuation manifest do not inherit chat settings',()=>{
  const configured={...job,model_selection:{provider:'test',model:'test',reasoningEffort:'max'}};
  const generated=buildUnitRequest(configured,{...unit,body:'完整原文'},[],'generate',{previous_truncated:true,completed_cards:[{id:'done',title:'已完成',type:'model',summary:'摘要',relations:[]}]});

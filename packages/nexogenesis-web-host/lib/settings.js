@@ -1,9 +1,9 @@
-import { modelCredentialRef, saveModelCredential } from "./model-credentials.js";
+import { modelCredentialRef, resolveModelCredential, saveModelCredential } from "./model-credentials.js";
 /** Local settings and credential references. API secrets never enter public settings. */
 import z from "@deepseek-ai/schemastery";
 import { assertUsableApiKey } from "@deepseek-ai/dsh-llm";
 import { HttpError, json, readJsonBody, rpcCall } from "./rpc.js";
-import { MODEL_PROVIDERS, providerConfigOf, normalizeModelSettings, modelCapabilities, selectedEffort, validateModelSettings, validateEndpoint, visionModeOf, visionSelection, workflowReasoningPolicy } from "../../nexogenesis-tools/lib/model-providers.js";
+import { MODEL_PROVIDERS, providerConfigOf, normalizeModelSettings, modelCapabilities, selectedEffort, validateModelSettings, validateEndpoint, visionModeOf, visionSelection, workflowReasoningPolicy, workflowResourcePolicy } from "../../nexogenesis-tools/lib/model-providers.js";
 export { MODEL_PROVIDERS, providerConfigOf };
 export const SETTINGS_NAMESPACE = "nexogenesis";
 export const API_KEY_REF = "NEXOGENESIS_API_KEY";
@@ -50,8 +50,8 @@ export function workflowModelSelectionFromSettings(settings = {}, workflow = "co
 	const reasoning = workflowReasoningPolicy(active, workflow);
 	return {
 		selection: { provider: providerConfigOf(active.provider).route, model: active.model,
-			...(workflow === "construct" && reasoning ? { reasoningEffort: reasoning } : {}) },
-		reasoning,
+			...(workflow === "construct" && reasoning && reasoning !== "provider-default" ? { reasoningEffort: reasoning } : {}) },
+		reasoning, limits:workflowResourcePolicy(active),
 	};
 }
 
@@ -59,8 +59,17 @@ export function workflowModelSelectionFromSettings(settings = {}, workflow = "co
 export async function ensureModelRoute(ctx, settings) {
 	const active = normalizeModelSettings(settings);
 	if (active.provider !== "kimi_code_plan") return;
+	// Minimal test/embedded contexts may not mount the credential seam. They
+	// cannot update a native provider profile and must keep the existing route.
+	if (typeof ctx.credentials?.describe !== "function") return;
 	const route = providerConfigOf(active.provider).route;
-	const profile = { apiKeyEnv: await modelCredentialRef(ctx, providerConfigOf(active.provider).credential_ref), displayName: providerConfigOf(active.provider).label };
+	const provider = providerConfigOf(active.provider);
+	const modelOverrides = Object.fromEntries(provider.models.map(cap => [cap.id, {
+		contextWindow:cap.context, maxTokens:cap.maxOutput,
+		...(cap.thinking === "toggle" ? { reasoningEfforts:{ off:null, ...Object.fromEntries(cap.efforts.map(effort => [effort,effort])) } }
+			: cap.thinking === "none" ? { reasoningEfforts:false } : {})
+	}]));
+	const profile = { apiKeyEnv: await modelCredentialRef(ctx, provider.credential_ref), displayName: provider.label, modelOverrides };
 	const installed = ctx.settings.get("llm-pi-ai") ?? {};
 	const current = installed.providers?.[route];
 	if (!current || Object.entries(profile).some(([key, value]) => JSON.stringify(current[key]) !== JSON.stringify(value))) {
@@ -76,17 +85,18 @@ export async function selectActiveModel(ctx, sessionId) {
 	return selected;
 }
 export function pipelineAuthorityOf(ctx) { return readSettings(ctx).pipeline_authority === "trusted" ? "trusted" : "manual"; }
-async function credentialConfigured(ctx, reference) {
-	try { return (await ctx.credentials.describe(await modelCredentialRef(ctx, reference)))?.configured === true; } catch { return false; }
+async function credentialConfigured(ctx, reference, endpoint) {
+	try { return Boolean((await resolveModelCredential(ctx,reference,{endpoint}))?.value); } catch { return false; }
 }
 async function settingsToWire(ctx) {
 	const s = readSettings(ctx);
 	const active = normalizeModelSettings(s);
 	const credentialStatus = Object.fromEntries(await Promise.all(Object.values(MODEL_PROVIDERS).map(async provider => {
-		const hasKey = await credentialConfigured(ctx, provider.credential_ref);
+		const saved=provider.id===active.provider?active:normalizeModelSettings({provider:provider.id,...s.provider_configs?.[provider.id]});
+		const hasKey = await credentialConfigured(ctx,provider.credential_ref,provider.id==='custom'?saved.base_url:undefined);
 		return [provider.id, { has_key: hasKey, api_key_masked: hasKey ? "••••••••" : "" }];
 	})));
-	const hasVisionKey = await credentialConfigured(ctx, VISION_API_KEY_REF);
+	const hasVisionKey = await credentialConfigured(ctx,VISION_API_KEY_REF,s.vision_base_url);
 	const vision = visionSelection(s);
 	return { ...active, ...credentialStatus[active.provider], credential_status: credentialStatus,
 		provider_options: Object.values(MODEL_PROVIDERS).map(({ credential_ref, route, ...publicProvider }) => publicProvider),
@@ -132,9 +142,9 @@ export async function handleSettingsPut(ctx, req, res) {
 		if (["manual", "trusted"].includes(body.pipeline_authority)) patch.pipeline_authority = body.pipeline_authority;
 		for (const key of ["api_key", "vision_api_key"]) if (typeof body[key] === "string" && body[key].trim()) assertUsableApiKey(body[key].trim(), "nexogenesis", key);
 		if (typeof body.api_key === "string" && body.api_key.trim()) {
-			await saveModelCredential(ctx, provider.credential_ref, body.api_key.trim());
+			await saveModelCredential(ctx,provider.credential_ref,body.api_key.trim(),{endpoint:provider.id==='custom'?active.base_url:undefined});
 		}
-		if (typeof body.vision_api_key === "string" && body.vision_api_key.trim()) await saveModelCredential(ctx, VISION_API_KEY_REF, body.vision_api_key.trim());
+		if (typeof body.vision_api_key === "string" && body.vision_api_key.trim()) await saveModelCredential(ctx,VISION_API_KEY_REF,body.vision_api_key.trim(),{endpoint:merged.vision_base_url});
 		if (connectionChanged || body.api_key?.trim()) await ensureModelRoute(ctx, active);
 		if (Object.keys(patch).length) await ctx.settings.update(SETTINGS_NAMESPACE, patch);
 	} catch (error) { throw new HttpError(400, error instanceof Error ? error.message : "模型设置保存失败。"); }

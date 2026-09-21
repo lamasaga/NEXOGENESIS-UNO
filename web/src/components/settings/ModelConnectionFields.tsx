@@ -13,9 +13,13 @@ export interface ModelConnectionFieldsProps {
 }
 
 const EFFORT_LABELS: Record<string, string> = { low: "低 · 更快", medium: "中", high: "高 · 深入", max: "最大 · 更耗时" };
+const compactCapacity = (value: number) => value >= 1_000_000 ? `${Math.round(value / 100_000) / 10}M` : `${Math.round(value / 1024)}K`;
 export function ModelConnectionFields(p: ModelConnectionFieldsProps) {
   const c = p.connection;
   const provider = MODEL_PROVIDERS[c.provider];
+  const availableProviders = p.settings?.provider_options
+    ? p.settings.provider_options.map(entry => MODEL_PROVIDERS[entry.id]).filter((entry): entry is (typeof MODEL_PROVIDERS)[ModelProvider] => Boolean(entry))
+    : [provider];
   const cap = modelCapabilities(c.provider, c.model, c);
   const key = p.settings?.credential_status?.[c.provider];
   const [remoteModels, setRemoteModels] = useState<string[]>([]);
@@ -59,7 +63,7 @@ export function ModelConnectionFields(p: ModelConnectionFieldsProps) {
     <section className="model-connection__section" aria-label="模型服务">
       <header className="model-connection__heading"><h3>连接主模型</h3><p>这里选择实际调用的供应商和模型。对话、编译与建构共用连接；思考深度只控制对话，编译与建构使用各自固定策略。</p></header>
       <label className="settings-field"><span className="settings-field__label">模型服务提供方</span>
-        <select aria-label="模型服务提供方" value={c.provider} onChange={e => p.onProviderChange(e.target.value as ModelProvider)}>{Object.values(MODEL_PROVIDERS).map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select>
+        <select aria-label="模型服务提供方" value={c.provider} onChange={e => p.onProviderChange(e.target.value as ModelProvider)}>{availableProviders.map(entry => <option key={entry.id} value={entry.id}>{entry.label}</option>)}</select>
         <span className="settings-field__hint">{provider.description} {provider.docs && <a href={provider.docs} target="_blank" rel="noreferrer">官方接口说明 ↗</a>}</span>
       </label>
       <label className="settings-field"><span className="settings-field__label">{provider.label} API Key</span>
@@ -82,6 +86,7 @@ export function ModelConnectionFields(p: ModelConnectionFieldsProps) {
       <div className="model-connection__capabilities" aria-live="polite">
         <span>{cap.known ? cap.vision ? "已登记 · 图文" : "已登记 · 文本" : "未登记 · 需声明能力"}</span>
         <span>{cap.thinking === "always" ? "始终思考" : cap.thinking === "toggle" ? "支持开关思考" : "未声明思考控制"}</span>
+        <span>上下文 {compactCapacity(cap.context)} · 输出 {compactCapacity(cap.maxOutput)}</span>
         <span>实际 ID：{c.model || "未填写"}</span>
         {cap.legacy_alias && <span>兼容旧名 · 当前对应 {cap.canonical_id}</span>}
       </div>

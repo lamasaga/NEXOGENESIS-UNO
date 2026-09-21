@@ -4,7 +4,7 @@ import test from "node:test";
 import { Context } from "../packages/nexogenesis-web-host/node_modules/@deepseek-ai/cordis/lib/index.js";
 import { LlmRuntime, BlockAssembler, createUserMessage } from "@deepseek-ai/dsh-llm";
 import { conversationPersonaInstruction, modelSelectionFromSettings, workflowModelSelectionFromSettings, handleSettingsPut, handleSettingsGet } from "../packages/nexogenesis-web-host/lib/settings.js";
-import { MODEL_PROVIDERS, normalizeModelSettings, modelCapabilities, validateModelSettings, visionSelection, selectedEffort, workflowReasoningPolicy } from "../packages/nexogenesis-tools/lib/model-providers.js";
+import { MODEL_PROVIDERS, normalizeModelSettings, modelCapabilities, validateModelSettings, visionSelection, selectedEffort, workflowReasoningPolicy, workflowResourcePolicy } from "../packages/nexogenesis-tools/lib/model-providers.js";
 import { NexoModelAdapter, buildModelRequest, completionChunks } from "../packages/nexogenesis-web-host/lib/model-adapter.js";
 
 function context(initial = {}) {
@@ -73,9 +73,13 @@ test("升级旧配置后首次切换供应商仍保留原型号；非法密钥�
 });
 
 test("供应商清单独立凭据与端点，未知模型 ID 不再静默替换", () => {
-  assert.equal(new Set(Object.values(MODEL_PROVIDERS).map(p => p.credential_ref)).size, 7);
+  assert.equal(new Set(Object.values(MODEL_PROVIDERS).map(p => p.credential_ref)).size, 10);
   assert.equal(config("kimi", "new-model").model, "new-model");
   assert.equal(modelCapabilities("kimi", "new-model").vision, false);
+  assert.equal(config("volcengine", "ep-example").base_url, "https://ark.cn-beijing.volces.com/api/v3");
+  assert.equal(config("qianfan", "ernie-example").base_url, "https://qianfan.baidubce.com/v2");
+  assert.equal(config("hunyuan", "hunyuan-example").base_url, "https://api.hunyuan.cloud.tencent.com/v1");
+  assert.equal(workflowResourcePolicy(config("volcengine", "ep-example")).source_chars, 60000);
   assert.throws(() => config("missing"));
   assert.throws(() => config("__proto__"));
   assert.equal(config("kimi_code_plan", "k3", { base_url: "https://wrong.example" }).base_url, "https://api.kimi.com/coding");
@@ -129,6 +133,9 @@ test("Code Plan 保留既有原生路由和独立密钥", async () => {
   assert.deepEqual(modelSelectionFromSettings(saved), { provider: "kimi-coding", model: "k3-256k", reasoningEffort: "max" });
   assert.ok(ctx.namespaces["llm-pi-ai"].providers.untouched);
   assert.equal(ctx.namespaces["llm-pi-ai"].providers["kimi-coding"].apiKeyEnv, "KIMI_CODE_PLAN_API_KEY");
+  assert.deepEqual(ctx.namespaces["llm-pi-ai"].providers["kimi-coding"].modelOverrides["k3-256k"].reasoningEfforts,{off:null,low:'low',high:'high',max:'max'});
+  assert.equal(ctx.namespaces["llm-pi-ai"].providers["kimi-coding"].modelOverrides["kimi-for-coding"].contextWindow,1048576);
+  assert.equal(ctx.namespaces["llm-pi-ai"].providers["kimi-coding"].modelOverrides["kimi-for-coding-highspeed"].maxTokens,32768);
   assert.equal(ctx.keys.has("MOONSHOT_API_KEY"), false);
 });
 test("未知模型支持显式视觉声明，端点变化不得复用旧密钥", async () => {
@@ -196,7 +203,7 @@ test("供应商错误不回显其响应正文里的敏感信息", async () => {
   await assert.rejects(collect(adapter.stream({ provider: "nexo-deepseek", model: "deepseek-v4-flash", messages: [user] })), e => !e.message.includes("secret") && e.failure.status === 401);
 });
 import { probeModelConnection } from '../packages/nexogenesis-web-host/lib/settings-test.js';
-import { localCredentialRef } from '../packages/nexogenesis-web-host/lib/model-credentials.js';
+import { localCredentialRef, resolveModelCredential } from '../packages/nexogenesis-web-host/lib/model-credentials.js';
 test('环境密钥只读时网页保存到本地覆盖，目录和实际生成使用同一新密钥',async()=>{
  const ctx=context(config('deepseek'));ctx.keys.set('DEEPSEEK_API_KEY','inherited-test-key');
  const originalDescribe=ctx.credentials.describe,originalSet=ctx.credentials.set;const writes=[];
@@ -221,13 +228,33 @@ test("DeepSeek 当前 ID 与旧别名使用同一能力，固定工作流不继�
   assert.equal(current.known,true);assert.equal(current.vision,true);assert.equal(legacy.known,true);assert.equal(legacy.legacy_alias,true);assert.equal(legacy.canonical_id,"deepseek-flash");
   const settings=config("deepseek","deepseek-flash",{reasoning_effort:"max"});
   assert.equal(modelSelectionFromSettings(settings).reasoningEffort,"max");
-  assert.deepEqual(workflowReasoningPolicy(settings,"compile"),{generate:"low",supplement:"low",repair:"low",check:"off",verify:"off"});
+  assert.deepEqual(workflowReasoningPolicy(settings,"compile"),{generate:"low",refine:"low",supplement:"low",collision:"low",repair:"low",'relation-repair':"low",check:"off",verify:"off",'relation-verify':"off",domain:"low",'single-card-rewrite':"low",'single-card-review':"off",'single-card-repair':"low",'single-card-verify':"off",'single-card-domain-review':"low"});
   assert.deepEqual(workflowModelSelectionFromSettings(settings,"compile").selection,{provider:"nexo-deepseek",model:"deepseek-flash"});
   assert.equal(workflowModelSelectionFromSettings(settings,"construct").selection.reasoningEffort,"high");
+  assert.equal(workflowResourcePolicy(settings).source_chars,90000);
+  assert.equal(workflowResourcePolicy(settings).output_tokens.generate,98304);
+  const standard=config('kimi_code_plan','kimi-for-coding');
+  assert.equal(modelCapabilities(standard.provider,standard.model).context,1048576);
+  assert.equal(workflowReasoningPolicy(standard,'compile').check,'off');
+  assert.equal(workflowModelSelectionFromSettings(standard,'construct').selection.reasoningEffort,'high');
+  const highspeed=config('kimi_code_plan','kimi-for-coding-highspeed');
+  assert.equal(workflowReasoningPolicy(highspeed,'compile').generate,'provider-default');
+  assert.equal(workflowModelSelectionFromSettings(highspeed,'construct').selection.reasoningEffort,undefined);
+  assert.equal(workflowResourcePolicy(highspeed).output_tokens.generate,32768);
 });
 test('套餐环境密钥只读时原生路由也指向本地覆盖，不修改环境',async()=>{
  const ctx=context(config('kimi_code_plan'));ctx.keys.set('KIMI_CODE_PLAN_API_KEY','inherited-test-key');const describe=ctx.credentials.describe;
  ctx.credentials.describe=async ref=>({...await describe(ref),writable:ref!=='KIMI_CODE_PLAN_API_KEY'});
  await save(ctx,{provider:'kimi_code_plan',api_key:'replacement-test-key'});
  assert.equal(ctx.namespaces['llm-pi-ai'].providers['kimi-coding'].apiKeyEnv,localCredentialRef('KIMI_CODE_PLAN_API_KEY'));assert.equal(ctx.keys.get('KIMI_CODE_PLAN_API_KEY'),'inherited-test-key');
+});
+test('自定义端点密钥按地址隔离，设置提交失败也不会把新密钥发给旧端点',async()=>{
+ const ctx=context();
+ await save(ctx,{provider:'custom',model:'model-a',base_url:'https://a.example/v1',api_key:'key-for-a'});
+ const update=ctx.settings.update;
+ ctx.settings.update=async(ns,patch)=>{if(ns==='nexogenesis')throw new Error('synthetic settings failure');return update(ns,patch);};
+ await assert.rejects(save(ctx,{provider:'custom',model:'model-b',base_url:'https://b.example/v1',api_key:'key-for-b'}),/synthetic settings failure/);
+ assert.equal((await resolveModelCredential(ctx,'NEXO_CUSTOM_API_KEY',{endpoint:'https://a.example/v1'})).value,'key-for-a');
+ assert.equal((await resolveModelCredential(ctx,'NEXO_CUSTOM_API_KEY',{endpoint:'https://b.example/v1'})).value,'key-for-b');
+ assert.equal(ctx.namespaces.nexogenesis.base_url,'https://a.example/v1');
 });

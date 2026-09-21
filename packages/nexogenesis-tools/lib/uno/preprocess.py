@@ -83,7 +83,9 @@ PAGE=re.compile(r'^\s*(?:第\s*\d+\s*页(?:\s*[共/].*页)?|[-—]\s*\d+\s*[-—
 # Explicit source locators in Markdown exports; ordinary comments are content.
 SOURCE_PAGE=re.compile(r'^<!--\s*(?:PDF\s*)?物理页\s*(\d+)(?:\s*[;；]\s*书页\s*(\d+))?\s*-->$')
 
-def prepare(path, modern=False, root=None, material_kind=None):
+def prepare(path, modern=False, root=None, material_kind=None, unit_char_limit=60000):
+    unit_char_limit=int(unit_char_limit)
+    if unit_char_limit < 12000 or unit_char_limit > 90000: raise ValueError('原文单元字符上限须为 12000–90000')
     path=Path(path)
     if path.stat().st_size>50*1024*1024: raise ValueError('单文件超过 50 MiB')
     raw=path.read_bytes()
@@ -321,13 +323,13 @@ def prepare(path, modern=False, root=None, material_kind=None):
                 title=re.sub(r'^#+\s*','',stripped)
             append_page_prefix()
             append_line(line,location,structural=bool(heading))
-            if not has_headings and buf_chars>=55000 and not line.strip():
+            if not has_headings and buf_chars>=int(unit_char_limit*11/12) and not line.strip():
                 flush(); title=path.stem+f' · 段落组 {len(chunks)+1}'
     append_page_prefix()
     flush()
     if not chunks: raise ValueError('没有可靠可读的文本')
     # A short article's headings are internal structure, not separate work items.
-    if modern and not book and sum(len(c['text']) for c in chunks)<=60000 and len(chunks)>1:
+    if modern and not book and sum(len(c['text']) for c in chunks)<=unit_char_limit and len(chunks)>1:
         chunks=[{'title':path.stem,'text':'\n\n'.join(c['text'] for c in chunks),'locator':chunks[0]['locator']+'；至 '+chunks[-1]['locator']}]
         changes['短文保留为完整工作单元']=1
     # Stable Markdown units, even for giant paragraphs or heading-free articles.
@@ -335,9 +337,9 @@ def prepare(path, modern=False, root=None, material_kind=None):
     for chunk in chunks:
         text=chunk['text']; start=0; part=0
         while start<len(text):
-            end=min(start+60000,len(text))
+            end=min(start+unit_char_limit,len(text))
             if end<len(text):
-                boundary=text.rfind('\n\n', start+30000, end)
+                boundary=text.rfind('\n\n', start+unit_char_limit//2, end)
                 if boundary>=0: end=boundary+2
             part+=1
             bounded.append({**chunk,'text':text[start:end], 'continuation':{'from_previous':start>0,'to_next':end<len(text)}, 'original_start':start,'original_end':end})
@@ -352,6 +354,6 @@ def prepare(path, modern=False, root=None, material_kind=None):
 if __name__=='__main__':
     try:
         req=json.loads(sys.stdin.buffer.read().decode('utf-8'))
-        sys.stdout.buffer.write(json.dumps(prepare(req['path'],req.get('modern',False),req.get('root'),req.get('material_kind')),ensure_ascii=False).encode('utf-8'))
+        sys.stdout.buffer.write(json.dumps(prepare(req['path'],req.get('modern',False),req.get('root'),req.get('material_kind'),req.get('unit_char_limit',60000)),ensure_ascii=False).encode('utf-8'))
     except Exception as e:
         sys.stderr.buffer.write(str(e).encode('utf-8')); sys.exit(1)
