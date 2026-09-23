@@ -11,6 +11,7 @@ import { validateCardClassification } from '../uno/card-classification.js';
 import { stageKnowledge, publishKnowledge, publishConstructionDomains } from "../uno/drafts.js";
 import { applyDomainGovernance } from '../uno/domain-governance.js';
 import { createDomainFromUnassignedCard, deleteUnassignedCard } from '../uno/card-management.js';
+import { writeReaderEntry } from '../uno/reader-notes.js';
 import {
 	allowedSignature, CARD_TYPES, relationAlternatives, validateRelationReadiness, validateRelationSemantics
 } from "./relation-semantics.js";
@@ -128,6 +129,7 @@ export class HarnessRejected extends Error {
 
 export class HarnessGateway {
 	constructor(root) { this.root = resolve(root); }
+    writeReaderEntry(input) { return writeReaderEntry(this.root, input); }
     prepareBookSource(input) { return prepareBookSource(this.root, input); }
     checkBookCards(input) { return saveBookCards(this.root, { ...input, check_only: true }); }
     saveBookCards(input) { return saveBookCards(this.root, input); }

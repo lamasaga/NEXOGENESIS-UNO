@@ -11,6 +11,8 @@ import { executeBookCompile, runBookTurn, BOOK_WORKFLOW, bindCardVersions, compl
 import { bookResumeState } from '../packages/nexogenesis-tools/lib/uno/book-agent.js';
 import { CARD_CLASSIFICATION_CONTRACT } from '../packages/nexogenesis-tools/lib/uno/card-classification.js';
 import { normalizeGeneratedEnvelope, validateGeneratedCards } from '../packages/nexogenesis-web-host/lib/unit-card-request.js';
+import { listCompileIsolation } from '../packages/nexogenesis-tools/lib/uno/compile-isolation.js';
+import { prepareIsolationRepair } from '../packages/nexogenesis-tools/lib/uno/compile-repair.js';
 
 function fixture(t,texts=['甲'.repeat(59000)+'末尾关键反证甲','乙'.repeat(58000)+'末尾关键反证乙']) {
  const root=mkdtempSync(join(tmpdir(),'uno-unit-'));t.after(()=>rmSync(root,{recursive:true,force:true}));mkdirSync(join(root,'00-Inbox'));
@@ -24,6 +26,67 @@ const data=req=>JSON.parse(req.messages[0].content[0].text.split('\n').slice(1).
 const card=(ref,id)=>({id,title:'具体机制'+id,type:'model',body:'## 核心思想\n原文描述了制度条件下的作用机制。\n\n## 关键组件\n制度约束行动者可选择的行为。\n\n## 结构关系或因果链条\n约束变化通过激励影响行动。\n\n## 失效边界\n只适用于来源限定的制度环境。\n\n## 来源与证据边界\n依据本单元的制度描述，不能从特定经验推广为普遍因果。',domains:[],sources:[{ref}],relations:[]});
 function model(root, handler){const requests=[];const ctx={get:name=>name==='llm'?{async *stream(req){requests.push(req);const reserved=reserveProviderRequest(ctx,req);try{yield {type:'text-delta',text:JSON.stringify(await handler(req,requests.length))};yield {type:'usage',usage:{inputTokens:100,outputTokens:40}};yield {type:'finish',reason:{kind:'stop'}};settleProviderRequest(reserved,{state:'completed'});}catch(e){settleProviderRequest(reserved,{state:'failed'});throw e;}}}:null};return {ctx,requests};}
 const happy=req=>{const d=data(req);return d.phase==='generate'?{cards:[card(d.source.ref,'card-'+sha(d.source.ref).slice(0,8))],note:'已覆盖本单元机制及条件'}:{checked_ids:(d.supplied_cards??[d.supplied_card]).map(c=>c.id),issues:[],unit_issues:[]}};
+
+for(const delivery of ['summary','absent'])test(`undelivered ${delivery} relations isolate only their candidates and advance the main line`,async t=>{
+ const {root,job}=fixture(t,['第一单元合成材料。','第二单元合成材料。']);
+ const [ref,next]=job.book_units.map(unit=>unit.ref);
+ if(delivery==='summary'){
+   mkdirSync(join(root,'01-Cards'),{recursive:true});const target=card(ref,'unread-target');
+   writeFileSync(join(root,'01-Cards/unread-target.md'),unoMarkdown({...target,schema:'uno-card-v4',lifecycle:'active',origin:'document',maturity:'growing'},target.body));
+ }
+ const bad={...card(ref,'bad'),relations:[{target:'unread-target',type:'supplement',note:'未经完整核对',basis:'source'}]};
+ const good={...card(ref,'good'),relations:[{target:'bad',type:'example',note:'等待目标通过',basis:'source'}]};
+ job.compile_isolation='compile-isolation-v1';
+ job.unit_work={[ref]:{source_revision:job.book_units[0].revision,references:delivery==='summary'?[{id:'unread-target',title:'摘要目标',delivery:'summary'}]:[],
+   cards:[bad,good],phase:'check',note:'原响应已保留',last_response:{phase:'generate',text:JSON.stringify({cards:[bad,good],note:'两个对象'})}}};
+ saveCompileJob(root,job);
+ const {ctx,requests}=model(root,req=>{const d=data(req);if(d.phase==='check')assert.ok(!d.supplied_cards.some(c=>c.id==='bad'));return happy(req);});
+ await executeBookCompile(ctx,root,job,new AbortController());
+ const end=readCompileJob(root,job.id),work=end.unit_work[ref];
+ assert.equal(end.status,'partial',end.detail);assert.equal(end.book_outcomes[ref].status,'quarantined');assert.equal(end.book_outcomes[next].status,'processed');
+ assert.equal(existsSync(join(root,'01-Cards/bad.md')),false);assert.equal(existsSync(join(root,'01-Cards/good.md')),true);
+ assert.deepEqual(parseCardFile(join(root,'01-Cards/good.md')).meta.relations,[]);
+ assert.deepEqual(work.cards.find(c=>c.id==='good').relations,good.relations);
+ assert.equal(work.isolation.items['link-bad'].code,'UNIT_RELATION_EVIDENCE_SCOPE');assert.equal(work.isolation.items['link-bad'].kind,'relation');
+ assert.deepEqual(work.isolation.items['link-bad'].candidate,bad);assert.deepEqual(work.isolation.items['link-bad'].target_ids,['unread-target']);
+ assert.deepEqual(requests.map(req=>data(req).phase),['check','generate','check']);assert.equal(existsSync(join(root,'00-Inbox/test.md')),true);
+ if(delivery==='summary'){
+   const item=listCompileIsolation(root).find(row=>row.card_id==='bad');
+   const prepared=prepareIsolationRepair(root,{item_id:item.id,expected_revision:item.revision});
+   const repairWork=prepared.fields.unit_work[ref];
+   assert.equal(repairWork.references.find(row=>row.id==='unread-target').delivery,'full');
+   assert.deepEqual(repairWork.repair_diagnosis.original_issues[0].related_card_ids,['unread-target']);
+   assert.match(repairWork.repair_diagnosis.original_issues[0].message,/未完整交付/);
+ }
+});
+
+test('explicit deferred retry reopens only the selected unit after the main line settles',t=>{
+ const {root,job}=fixture(t,['甲','乙','丙']),refs=job.book_units.map(unit=>unit.ref);
+ job.unit_work=Object.fromEntries(refs.map(ref=>[ref,{phase:'deferred',references:[],last_response:{phase:'generate',text:''}}]));
+ job.book_outcomes=Object.fromEntries(refs.slice(0,2).map(ref=>[ref,{status:'deferred',note:'保留'}]));job.book_focus_refs=[refs[0]];
+ assert.throws(()=>resolveBookPause(root,job,'retry-deferred-unit'),/主线处理完毕/);
+ job.book_outcomes[refs[2]]={status:'quarantined',card_ids:[]};job.book_focus_refs=[refs[2]];
+ const unchanged=JSON.stringify(job.book_outcomes[refs[1]]);
+ resolveBookPause(root,job,'retry-deferred-unit');
+ assert.equal(job.book_outcomes[refs[0]],undefined);assert.equal(JSON.stringify(job.book_outcomes[refs[1]]),unchanged);
+ assert.equal(job.book_outcomes[refs[2]].status,'quarantined');assert.equal(job.book_defer_history.length,1);
+ assert.equal(job.unit_work[refs[0]].last_response,undefined);assert.deepEqual(job.book_focus_refs,[refs[0]]);
+});
+
+test('real Python preparation reaches generation and review from an unprepared compile job',async t=>{
+ const {root,job}=fixture(t,['# 制度机制\n\n制度约束改变行动者的激励，并影响其行动选择。']);
+ job.phase='prepare';job.sources=[];job.book_units=[];job.book_focus_refs=[];
+ saveCompileJob(root,job);
+ const {ctx,requests}=model(root,happy);
+ await executeBookCompile(ctx,root,job,new AbortController());
+ const saved=readCompileJob(root,job.id);
+ assert.deepEqual(saved.failures,[]);
+ assert.ok(saved.book_units.length>0);
+ assert.equal(saved.book_outcomes[saved.book_units[0].ref]?.status,'processed',saved.detail);
+ assert.ok(saved.receipts.length>0);
+ assert.deepEqual(requests.map(req=>data(req).phase),['generate','check']);
+ assert.match(JSON.stringify(requests[0].messages),/制度约束改变行动者的激励/);
+});
 
 test('high-quality compile refines every generated card before the independent review',async t=>{
  const {root,job}=fixture(t,['制度机制原文。']),ref=job.book_focus_refs[0];job.compile_quality_mode='refine-each-card-v1';saveCompileJob(root,job);
@@ -292,6 +355,23 @@ test('completion distinguishes source gaps, remaining units, archive failures an
   const archive=completeBookState({...structuredClone(base),failures:[{kind:'archive',source:'book'}]});
   assert.equal(bookResumeState(archive).available,true);assert.match(archive.detail,/提取或归档失败/);
   assert.equal(bookResumeState({...done,phase:'read',status:'paused'}).available,true,'interrupted finalization can still resume');
+});
+
+for(const transport of ['finish','throw'])test(`content safety ${transport} pauses once, preserves provider error and never writes or retries`,async t=>{
+ const {root,job}=fixture(t,['独立知识原文。']);job.compile_isolation='compile-isolation-v1';saveCompileJob(root,job);
+ const raw='400 {"error":{"type":"invalid_request_error","message":"The request was rejected because it was considered high risk"}}';
+ let requests=0;
+ const ctx={get:name=>name==='llm'?{async *stream(req){requests++;const reserved=reserveProviderRequest(ctx,req);
+   try{if(transport==='throw')throw new Error(raw);yield {type:'finish',reason:{kind:'error',failure:{message:raw}}};}
+   finally{settleProviderRequest(reserved,{state:'failed'});}
+ }}:null};
+ await executeBookCompile(ctx,root,job,new AbortController());
+ const end=readCompileJob(root,job.id);
+ assert.equal(end.status,'paused');assert.equal(end.error_code,'MODEL_CONTENT_REJECTED');
+ assert.equal(end.last_failure.category,'content_safety');assert.equal(end.last_failure.retryable,false);
+ assert.equal(end.last_failure.provider_message,raw);assert.equal(end.calls[0].provider_message,raw);
+ assert.match(end.detail,/供应商的内容安全审核/);assert.doesNotMatch(end.detail,/响应未完整结束/);
+ assert.equal(requests,1);assert.equal(end.receipts.length,0);assert.equal(end.book_outcomes[job.book_units[0].ref],undefined);
 });
 
 test('reasoning-only model stop is retryable and never caches an empty generation as success',async t=>{

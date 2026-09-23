@@ -2,6 +2,8 @@ import { memo, useEffect, useRef, useState, type PointerEvent as ReactPointerEve
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { DotsSixVertical, PencilSimple, Star, X, ArrowCounterClockwise } from '@phosphor-icons/react';
+import { CardWriting } from './CardWriting';
 import { BOOK_UNIT_REF, isBookResource, isBookMaterialPath } from '../../../packages/nexogenesis-tools/lib/uno/book-paths.js';
 import { fetchCard, type CardDetail, type CardRelation } from "../api/client";
 import { DomainContent, DomainRelations } from './DomainContent';
@@ -43,6 +45,7 @@ function CardReaderPanel({ cardId, index, onClose, onViewed, onToggleFavorite, i
   const currentId = history.at(-1)!;
   const [card, setCard] = useState<CardDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
   const [frame, setFrame] = useState(() => initialReaderFrame(index));
   const [manipulating, setManipulating] = useState(false);
   const panelRef = useRef<HTMLElement>(null);
@@ -52,7 +55,7 @@ function CardReaderPanel({ cardId, index, onClose, onViewed, onToggleFavorite, i
 
   useEffect(() => {
     let active = true;
-    setCard(null); setError(null);
+    setCard(null); setError(null); setEditing(false);
     contentRef.current?.scrollTo({ top: 0 });
     fetchCard(currentId).then((detail) => {
       if (active) { setCard(detail); onViewed?.(detail); }
@@ -63,6 +66,7 @@ function CardReaderPanel({ cardId, index, onClose, onViewed, onToggleFavorite, i
   const commitFrame = (next: ReaderFrame) => { live.current = next; setFrame(next); };
   useEffect(() => {
     const onResize = () => {
+      if (window.innerWidth < 320 || window.innerHeight < 240) return;
       gesture.current = null; setManipulating(false);
       const next = fitReaderFrame(live.current, { width: window.innerWidth, height: window.innerHeight });
       live.current = next; setFrame(next);
@@ -104,13 +108,14 @@ function CardReaderPanel({ cardId, index, onClose, onViewed, onToggleFavorite, i
         if (e.target !== e.currentTarget || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) return;
         e.preventDefault(); commitFrame(fitReaderFrame({ ...live.current, x: live.current.x + (e.key === "ArrowRight" ? 24 : e.key === "ArrowLeft" ? -24 : 0), y: live.current.y + (e.key === "ArrowDown" ? 24 : e.key === "ArrowUp" ? -24 : 0) }, { width: window.innerWidth, height: window.innerHeight }));
       }}>
-      <span className="micro-label">卡片<span className="card-reader__drag-hint"> · 拖动标题栏移动</span></span>
+      <span className="reader-window-title"><DotsSixVertical size={20}/>知识卡片</span>
       <div className="card-reader__actions">
-        <button aria-label="恢复卡片默认大小与位置" title="恢复默认大小与位置" onClick={() => commitFrame(initialReaderFrame(index))}>↺</button>
+        {card?.edit_id&&<button className="reader-edit-body" aria-pressed={editing} onClick={()=>setEditing(true)}><PencilSimple size={16}/>编辑正文</button>}
+        <button aria-label="恢复卡片默认大小与位置" title="恢复默认大小与位置" onClick={() => commitFrame(initialReaderFrame(index))}><ArrowCounterClockwise size={18}/></button>
         {card && onToggleFavorite && <button className={`card-reader__favorite${isFavorite?.(card.id) ? " is-active" : ""}`}
           aria-label={isFavorite?.(card.id) ? "取消收藏" : "收藏此卡片"} aria-pressed={isFavorite?.(card.id) ?? false}
-          onClick={() => onToggleFavorite(card)}>{isFavorite?.(card.id) ? "★" : "☆"}</button>}
-        <button className="card-reader__close" aria-label="关闭此卡片" onClick={() => onClose(cardId)}>✕</button>
+          onClick={() => onToggleFavorite(card)}><Star size={21} weight={isFavorite?.(card.id)?'fill':'regular'}/></button>}
+        <button className="card-reader__close" aria-label="关闭此卡片" onClick={() => onClose(cardId)}><X size={21}/></button>
       </div>
     </div>
     <div ref={contentRef} className="card-reader__content">
@@ -127,7 +132,8 @@ function CardReaderPanel({ cardId, index, onClose, onViewed, onToggleFavorite, i
         {card.summary&&<p className="card-reader__summary">{card.summary}</p>}
         {card.domain_content && <DomainContent content={card.domain_content} onNavigate={id=>setHistory(items=>[...items,id])} />}
         {!!card.quality_notes?.length&&<p role="note">待校对：{card.quality_notes.join('；')}</p>}
-        <CardMarkdown body={card.body} libraryId={card.library_id??undefined} />
+        {card.user_edited_at&&<p className="reader-writing-hint">正文经你编辑 · {new Date(card.user_edited_at).toLocaleDateString('zh-CN')}</p>}
+        {card.edit_id&&card.revision?<CardWriting key={card.edit_id} card={card} editing={editing} onEditing={setEditing} onSaved={setCard}/>:<CardMarkdown body={card.body} libraryId={card.library_id??undefined} />}
         {card.domain_content && <DomainRelations relations={card.relations ?? []} onNavigate={id=>setHistory(items=>[...items,id])} />}
         <CardSources sources={card.sources} libraryId={card.library_id??undefined} onNavigate={id=>setHistory(h=>[...h,id])}/>
         {!!card.assets?.length&&<section className="card-assets"><h3>来源图片</h3>{card.assets.map(a=><figure key={a.ref}><a href={a.url} target="_blank" rel="noreferrer"><img loading="lazy" src={a.url} alt={a.caption||a.locator||"来源图片"} style={{maxWidth:"100%",maxHeight:280,objectFit:"contain"}}/></a><figcaption>{a.caption} · {a.locator}</figcaption></figure>)}</section>}

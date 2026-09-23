@@ -149,7 +149,7 @@ export async function handleProjectsPost(ctx, req, res, _trustedHosts) {
 function summaryFromSession(s, ext) {
 	return {
 		id: s.sessionId,
-		title: ext.title ?? "新会话",
+		title: ext.title ?? s.projections?.values?.title ?? "新会话",
 		updated_at: new Date(s.updatedAt).toISOString(),
 		...ext.uno_job_id ? { uno_job_id: ext.uno_job_id } : {},
 		...ext.pinned ? { pinned: true } : {},
@@ -247,7 +247,7 @@ export async function conversationHistoryWindow(ctx, id, root, { beforeSeq, afte
 		}));
 		messages = [...messages,...internal.flat()].sort((a,b)=>String(a.ts??'').localeCompare(String(b.ts??''))||String(a.id??'').localeCompare(String(b.id??''))).slice(-pageLimit);
 	}
-	const title = ext.title ?? titleFromHistory(history) ?? "新会话";
+	const title = ext.title ?? ctx.get?.("sessions")?.get(id)?.projections?.values?.title ?? titleFromHistory(history) ?? "新会话";
 	const latestEventTime = entries.map(entry => entry?.time ?? entry?.event?.time).filter(value => value !== undefined).at(-1);
 	const latestEventDate = latestEventTime === undefined ? null : new Date(latestEventTime);
 	const ownerUpdatedAt = latestEventDate && !Number.isNaN(latestEventDate.getTime()) ? latestEventDate.toISOString() : null;
@@ -334,7 +334,7 @@ async function conversationDetail(ctx, id, root) {
 	if (compacted.changed) patchConversationExt(id, compacted.metaPatch);
 	const activeExt = compacted.changed ? { ...ext, ...compacted.metaPatch } : ext;
 	const messages = compacted.messages;
-	const title = activeExt.title ?? titleFromHistory(history) ?? "新会话";
+	const title = activeExt.title ?? ctx.get?.("sessions")?.get(id)?.projections?.values?.title ?? titleFromHistory(history) ?? "新会话";
 	return {
 		id,
 		project_id: activeExt.project_id ?? ensureDefaultProject().id,

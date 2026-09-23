@@ -148,6 +148,29 @@ test('preparation advertises book profile, review-publish-repair and model avail
   f.setSettings({provider:'unmetered-native',model:'x'});const unavailable=(await f.api('/prepare',{},'GET')).data;assert.equal(unavailable.compile_model.available,false);assert.equal(f.jobs().length,0);assert.equal(f.requests.length,0);
 });
 
+test('ordinary resume preserves deferred outcomes and never restarts the earlier unit',async t=>{
+ const f=fixture(t),{data:created}=await f.api('/jobs',{mode:'compile',compile_profile:'unit-cards-v3',sources:['00-Inbox/book.md'],material_kind:'book',budget_calls:4});
+ await f.idle();const job=readCompileJob(f.root,created.id);
+ assert.ok(job.book_units.length>=2);const [earlier,current]=job.book_units.map(unit=>unit.ref);
+ job.status='paused';job.phase='read';job.book_focus_refs=[current];job.book_advance_requested=false;
+ job.book_outcomes[earlier]={status:'deferred',note:'明确延期的旧拦截',card_ids:[]};delete job.book_outcomes[current];
+ job.unit_work[earlier]={phase:'deferred',references:[],last_response:{phase:'generate',text:''}};
+ job.last_failure={code:'MODEL_EMPTY_RESPONSE',message:'当前单元空响应',retryable:true};delete job.last_resume;
+ saveCompileJob(f.root,job);const deferred=JSON.stringify(job.book_outcomes[earlier]),beforeWork=JSON.stringify(job.unit_work[earlier]);
+ await f.api('/jobs/'+job.id+'/resume',{version:job.version});await f.idle();
+ const resumed=readCompileJob(f.root,job.id);
+ assert.equal(JSON.stringify(resumed.book_outcomes[earlier]),deferred);assert.equal(JSON.stringify(resumed.unit_work[earlier]),beforeWork);
+ assert.deepEqual(resumed.book_focus_refs,[current]);assert.equal((resumed.book_defer_history??[]).length,0);
+ await assert.rejects(f.api('/jobs/'+job.id+'/resume',{version:job.version}),/状态已变化/);
+ resumed.book_outcomes[current]={status:'processed',card_ids:[]};resumed.status='partial';resumed.phase='done';
+ delete resumed.last_failure;delete resumed.last_resume;saveCompileJob(f.root,resumed);
+ const visible=(await f.api('/jobs/'+job.id,{},'GET')).data;
+ assert.equal(visible.resume_plan.actions[0].id,'retry-deferred-unit');
+ const resolution=await f.api('/jobs/'+job.id+'/resolve',{version:resumed.version,decision:'retry-deferred-unit'});await f.idle();
+ const after=readCompileJob(f.root,job.id);assert.equal(resolution.status,202);assert.equal(after.book_outcomes[earlier],undefined);
+ assert.equal(after.book_outcomes[current].status,'processed');assert.equal(after.book_defer_history.length,1);
+});
+
 test('legacy semantic stop exposes decisions, rejects generic resume and applies defer through the dedicated endpoint',async t=>{
   const f=fixture(t),input={mode:'compile',compile_profile:'unit-cards-v3',sources:['00-Inbox/book.md'],material_kind:'book',budget_calls:4};
   const {data:created}=await f.api('/jobs',input);await f.idle();const job=readCompileJob(f.root,created.id),ref=job.book_units[0].ref;

@@ -468,6 +468,7 @@ export default function App() {
     return subscribeEvents(conv?.id ?? null, (ev: SimEvent) => {
       if (ev.type === "work.updated") {
         void refreshWork();
+        if (ev.payload.workflow === "dialogue" && ev.payload.status === "completed") refreshProjects();
         const payload = {
           ...ev.payload,
           node_ids: visibleGraphNodeIds(ev.payload.node_ids, dataRef.current, activeInstanceId),
@@ -513,7 +514,7 @@ export default function App() {
         setTick((n) => n + 1);
       }
     },()=>{void refreshWork();refreshProjects();fetchKnowledgeInstances().then(setKnowledgeInstances).catch(()=>{});invalidateGraphOverviewCache();fetchGraph().then(setData).catch(()=>{});});
-  }, [engine, conv?.id, activeInstanceId, refreshWork]);
+  }, [engine, conv?.id, activeInstanceId, refreshWork, refreshProjects]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

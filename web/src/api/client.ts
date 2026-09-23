@@ -28,7 +28,7 @@ export interface UnoRelationWeaving {
 export interface UnoConstructionResult {id:string;status:string;note:string;kind?:string;source_verified?:boolean}
 export interface UnoConstructionDecision {id:string;status:string;note:string;changes?:{relations?:Array<{target:string;type:string;note:string;basis?:string;origin?:string}>}}
 export interface UnoConstructionWork {author?:{decisions:UnoConstructionDecision[]};effective_author?:{decisions:UnoConstructionDecision[]};repair?:{decisions:UnoConstructionDecision[]};repair_staged?:boolean}
-export interface UnoResumeAction {id:'resume'|'quarantine-candidates'|'discard-candidates'|'defer-unit';label:string;effect:string}
+export interface UnoResumeAction {id:'resume'|'quarantine-candidates'|'discard-candidates'|'defer-unit'|'retry-deferred-unit';label:string;effect:string}
 export interface UnoResumePlan {contract:string;kind:'resume'|'decision'|'review'|'blocked'|'complete';reason:string;primary?:UnoResumeAction;actions:UnoResumeAction[];fingerprint:string}
 export interface UnoDomainProposal {proposal_id:string;kind:'create';id:string;title:string;summary:string;core_questions:string[];includes:string[];excludes:string[];parents:string[];representative_card_ids:string[];member_card_ids:string[];closest_domains:string[];why_new:string;alternative:string}
 export interface UnoBookSource {source:string;original_source?:string;source_ref?:string;source_revision?:string;extraction_revision?:string;title?:string;warnings:string[];units:Array<{ref:string}>;incomplete?:boolean}
@@ -50,7 +50,7 @@ export interface UnoJob {
   domain_catalog?:Array<{id:string;title:string;summary?:string;parents:string[];revision?:string|null}>;
   domain_governance?:{contract:string;status:string;effective_units_since_checkpoint:number;unassigned_card_ids:string[];open_unassigned?:number;last_unassigned?:Array<{card_id:string;reason:string}>;pending_proposals:UnoDomainProposal[];checkpoints:Array<{at:string;reason:string;card_ids:string[];proposal_ids:string[];assigned:string[]}>};
   last_recovery?:{contract:string;status:'checking'|'recovered'|'failed';phase:string;method:'deterministic'|'model';changes:string[];unit_ref:string;at:string;model_calls:number;error?:string};
-  last_failure?:{code:string;message:string;category:string;automatic_recovery:boolean;retryable:boolean;at:string};
+  last_failure?:{code:string;message:string;provider_message?:string;category:string;automatic_recovery:boolean;retryable:boolean;at:string};
   construction_controls?:ConstructionControls;
   construction_profile?: 'direction-driven-v1'|'strategy-driven-v2';construction_plan?:UnoConstructionPlan;
   relation_weaving?:UnoRelationWeaving;
@@ -154,7 +154,7 @@ export async function updateUnoJob(job: UnoJob, action:"review"|"resume"|"cancel
   return jsonOrThrow(await fetch("/api/uno/jobs/" + encodeURIComponent(job.id) + "/" + action,
     {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({version:job.version,decision:"save",allow_titles:allowTitles,skip_titles:skipTitles,budget_calls:budgetCalls})}));
 }
-export async function resolveUnoJob(job:UnoJob,decision:'quarantine-candidates'|'discard-candidates'|'defer-unit',budgetCalls?:number):Promise<UnoJob>{
+export async function resolveUnoJob(job:UnoJob,decision:Exclude<UnoResumeAction['id'],'resume'>,budgetCalls?:number):Promise<UnoJob>{
   return jsonOrThrow(await fetch('/api/uno/jobs/'+encodeURIComponent(job.id)+'/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:job.version,decision,budget_calls:budgetCalls})}));
 }
 export async function reviewUnoDomains(job:UnoJob, approveIds:string[], deferIds:string[]):Promise<UnoJob>{
@@ -272,6 +272,7 @@ export async function fetchGraph(): Promise<GraphData> {
 }
 
 export interface CardDetail {
+  revision?:string; edit_id?:string|null; user_notes?:ReaderNote[]; user_edited_at?:string;
   domain_content?: DomainContentDetail;
   assets?:Array<{ref:string;url:string;caption:string;locator:string}>;library_id?:string|null;
   summary?:string; quality_notes?:string[]; superseded_by?:string;
@@ -279,6 +280,13 @@ export interface CardDetail {
   domains: string[]; domain_titles?: Record<string, string>;
   relations?: CardRelation[]; sources?: string[];
   updated: string; body: string;
+}
+
+export interface ReaderAnchor { block:string; block_start:number; quote:string; start:number; end:number; before?:string; after?:string; }
+export interface ReaderNote { id:string; text:string; anchor:ReaderAnchor|null; created_at:string; updated_at:string; author:'user'; revision:string; }
+export interface ReaderWrite { operation:'body'|'note'; text:string; expected_revision:string; request_id:string; note_id?:string; expected_note_revision?:string|null; anchor?:ReaderAnchor|null; }
+export async function saveReaderEntry(id:string, input:ReaderWrite):Promise<{accepted:boolean;revision:string}> {
+  return jsonOrThrow(await fetch(`/api/cards/${encodeURIComponent(id)}/reader`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)}));
 }
 
 export interface KnowledgeInstanceSummary { id: string; name: string; legacy: boolean; active: boolean; card_count: number | null; status?: 'available'|'unavailable'|'invalid_manifest'; reason?:string; warnings?:string[]; }

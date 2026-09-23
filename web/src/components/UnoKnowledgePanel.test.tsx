@@ -3,6 +3,20 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { UnoKnowledgePanel, HistoricalKnowledgeView, ConstructionPlanView, UnoRequestUsage, ActiveJobOverview, activeJobPresentation, repairRecoveryGuidance, bookCompilePhaseLabel, bookStatusDetail, uniqueSourceWarnings, constructionAvailability, compileAvailability, inboxSourceProgress, unoWorkProgress } from "./UnoKnowledgePanel";
 import { __resetLocalRequestTokenForTests, resolveUnoJob, reviewUnoBookArchive, startUnoJob, updateUnoJob, type UnoJob, type UnoPreparation } from "../api/client";
 import { BookCompilationView, bookActiveStatus, bookCompilationProgress, bookCanContinue, bookPanelTitle, bookSettlementSummary, bookWorkingTitle } from './BookCompilationView';
+import { ContentSafetyNotice, contentSafetyFailure } from './UnoKnowledgePanel';
+
+it('内容审核拦截有专用说明，旧任务也可查看原始错误，普通请求错误不会误报',()=>{
+ const raw='400 {"error":{"type":"invalid_request_error","message":"The request was rejected because it was considered high risk"}}';
+ const base={id:'blocked',mode:'compile',workflow:'uno-unit-compile-v3',status:'paused',phase:'read',detail:raw,batches:[],book_units:[],book_outcomes:{},calls:[],receipts:[],failures:[],sources:[]} as unknown as UnoJob;
+ for(const last_failure of [{code:'UNIT_COMPILE_STOPPED',message:raw},{code:'MODEL_CONTENT_REJECTED',message:'内容审核拦截',provider_message:raw}]){
+  const job={...base,last_failure} as UnoJob,html=renderToStaticMarkup(<ContentSafetyNotice job={job}/>);
+  expect(html).toContain('请求内容被供应商安全审核拦截');expect(html).toContain('不会自动重发');expect(html).toContain('延期内容仍算未完成');
+  expect(html).toContain('<details><summary>查看供应商错误详情</summary>');expect(html).toContain('high risk');
+  expect(activeJobPresentation(job).headline).toBe('请求内容被供应商安全审核拦截');
+  expect(contentSafetyFailure({...job,status:'running'})).toBeNull();expect(contentSafetyFailure({...job,status:'ended'})).toBeNull();
+ }
+ expect(contentSafetyFailure({...base,detail:'400 invalid_request_error: missing field'})).toBeNull();
+});
 afterEach(()=>{vi.unstubAllGlobals();__resetLocalRequestTokenForTests();});
 it('Inbox 材料状态区分未完成任务和完成归档副本',()=>{
  expect(inboxSourceProgress({path:'book.epub',compile_state:'unfinished',processed_units:24,total_units:26,open_items:2})).toBe('未完成 · 24/26 个单元 · 待修复 2 项');
@@ -182,6 +196,12 @@ it('未通过候选可显式保留到未组织池',async()=>{
  const fetcher=vi.fn(async(url:RequestInfo|URL,_init?:RequestInit)=>new Response(JSON.stringify(String(url)==='/api/security/session'?{token:'local'}:{id:'j',status:'running'})));vi.stubGlobal('fetch',fetcher);
  await resolveUnoJob({id:'j',version:9} as UnoJob,'quarantine-candidates');
  expect(JSON.parse(fetcher.mock.calls[1][1]!.body as string)).toEqual({version:9,decision:'quarantine-candidates'});
+});
+
+it('重试延期单元使用显式决策并绑定当前任务版本',async()=>{
+ const fetcher=vi.fn(async(url:RequestInfo|URL,_init?:RequestInit)=>new Response(JSON.stringify(String(url)==='/api/security/session'?{token:'local'}:{id:'j',status:'running'})));vi.stubGlobal('fetch',fetcher);
+ await resolveUnoJob({id:'j',version:10} as UnoJob,'retry-deferred-unit');
+ expect(fetcher.mock.calls[1][0]).toBe('/api/uno/jobs/j/resolve');expect(JSON.parse(fetcher.mock.calls[1][1]!.body as string)).toEqual({version:10,decision:'retry-deferred-unit'});
 });
 
 it('阅读进度显示本次任务冻结的领域批准方式',()=>{

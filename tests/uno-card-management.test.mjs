@@ -60,12 +60,31 @@ test('manual seed-domain governance rejects card-title copies and generic contai
   assert.throws(()=>createDomainFromUnassignedCard(root,{...base,key:'manual-domain/generic',domain:definition('综合')}),/不能使用/);
 });
 
-test('unassigned-card API exposes the explicit create-domain governance route',async t=>{
-  const root=fixture(t);commitCard(root,card('seed',{title:'土地利益分配机制'}));synchronizeUnassignedPool(root,{card_ids:['seed']});
-  const revision=unoRevision(root,unoCardRef(root,loadCards(root).get('seed'))),body={library_id:'legacy',expected_revision:revision,request_id:'request-1',domain:{
+for(const seedId of ['seed','seed with-space','中文卡片（案例）','literal%20value'])test(`unassigned-card API creates a domain for stable ID ${seedId}`,async t=>{
+  const root=fixture(t);commitCard(root,card(seedId,{title:'土地利益分配机制'}));synchronizeUnassignedPool(root,{card_ids:[seedId]});
+  const revision=unoRevision(root,unoCardRef(root,loadCards(root).get(seedId))),body={library_id:'legacy',expected_revision:revision,request_id:'request-1',domain:{
     title:'土地制度与国家治理',summary:'研究土地制度如何塑造财政、社会结构与国家治理。',core_questions:['土地收益如何影响国家治理？'],includes:['土地制度与财政分配'],excludes:['单一王朝事件名录']}};
-  const req=Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]),{url:'/api/uno/unassigned/seed/create-domain',method:'POST',headers:{'content-type':'application/json'}});
+  const req=Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]),{url:'/api/uno/unassigned/'+encodeURIComponent(seedId)+'/create-domain',method:'POST',headers:{'content-type':'application/json'}});
   const res={data:'',setHeader(){},writeHead(status){this.status=status;},write(value){this.data+=value;},end(value=''){this.data+=value;}};
   await handleUnoApi({settings:{get:()=>({})}},req,res,root);
-  const result=JSON.parse(res.data);assert.equal(res.status,200);assert.deepEqual(result.card_ids,['seed']);assert.equal(listDomainsV2(root).length,1);
+  const result=JSON.parse(res.data);assert.equal(res.status,200);assert.deepEqual(result.card_ids,[seedId]);assert.equal(listDomainsV2(root).length,1);
+});
+
+test('unassigned-card API decodes deletion target without changing its identity',async t=>{
+  const root=fixture(t),id='中文 card%20（案例）';commitCard(root,card(id));synchronizeUnassignedPool(root,{card_ids:[id]});
+  const revision=unoRevision(root,unoCardRef(root,loadCards(root).get(id)));
+  const body={library_id:'legacy',expected_revision:revision,confirm_id:id};
+  const req=Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]),{url:'/api/uno/unassigned/'+encodeURIComponent(id),method:'DELETE',headers:{'content-type':'application/json'}});
+  let result;await handleUnoApi({},req,{writeHead(status){assert.equal(status,200);},end(value){result=JSON.parse(value);}},root);
+  assert.equal(result.card_id,id);assert.equal(loadCards(root).has(id),false);assert.ok(existsSync(join(root,result.archived_ref)));
+});
+
+test('unassigned-card routes reject unsafe IDs and malformed encoding before processing',async t=>{
+  const root=fixture(t);
+  for(const encoded of ['%ZZ','%E4%B8','..%2Foutside','..%5Coutside','%00','CON','trailing%20','trailing.']){
+    for(const [method,suffix] of [['POST','/recompile'],['POST','/organize'],['POST','/create-domain'],['DELETE','']]){
+      await assert.rejects(handleUnoApi({}, {url:'/api/uno/unassigned/'+encoded+suffix,method}, {},root),error=>error.status===400&&/卡片标识/.test(error.message));
+    }
+  }
+  assert.equal(loadCards(root).size,0);
 });

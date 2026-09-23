@@ -12,7 +12,8 @@ import { invalidateKnowledgeSnapshot } from "../packages/nexogenesis-tools/lib/c
 import { streamQuickThinking, retrieveQuickContext, buildIntentRequest, buildQuickRequest, quickMessages, isQuickThinkingRunning } from "../packages/nexogenesis-web-host/lib/quick-thinking.js";
 import { prepareThinking } from "../packages/nexogenesis-web-host/lib/thinking.js";
 import { handleChatStream, handleChat } from "../packages/nexogenesis-web-host/lib/chat.js";
-import { foldMessages, handleConversationGet, handleConversationDelete, handleConversationCreate } from "../packages/nexogenesis-web-host/lib/projects.js";
+import { foldMessages, handleConversationGet, handleConversationDelete, handleConversationCreate, handleProjectsGet, conversationHistoryWindow } from "../packages/nexogenesis-web-host/lib/projects.js";
+import { normalizeConversationTitle } from "../packages/nexogenesis-web-host/lib/conversation-title.js";
 import { handleCognitiveSessionSteer } from "../packages/nexogenesis-web-host/lib/cognition.js";
 import { handleWorkStop, workSnapshot } from "../packages/nexogenesis-web-host/lib/work.js";
 import { collectThinkingContext } from "../packages/nexogenesis-web-host/lib/thinking-routes.js";
@@ -50,6 +51,68 @@ test("新思考不接受路线锁定，旧研究请求保持原规则", () => {
   assert.throws(() => prepareThinking({ mode: "unknown" }, "问题"));
   assert.equal(prepareThinking({ goal: "understand", depth: "auto" }, "问题").auto, true);
   assert.deepEqual(prepareThinking({ mode: "quick", route: "analogize" }, "问题"), { quick: true });
+});
+
+test("首次交流顺带命名，侧栏与历史一致，追问不重复改名且不增加模型调用", async t => {
+  const f = fixture(t);
+  patchConversationExt(f.session.id, { project_id: ensureDefaultProject().id });
+  f.llm.stream = async function* (options) {
+    f.requests.push(options);
+    yield { type: "text-delta", text: '{"action":"answer","judgment":"解释概念","title":"县域治理的现代化路径"}\n回答正文' };
+    yield { type: "finish", reason: { kind: "stop" } };
+  };
+  const res = f.response();
+  await streamQuickThinking(f.ctx, res, f.root, f.session.id, "如何理解县域治理现代化？");
+  assert.equal(f.requests.length, 1);
+  assert.equal(conversationExt(f.session.id).title, "县域治理的现代化路径");
+  assert.equal(quickMessages(f.session.events).at(-1).content, "回答正文");
+  const list = f.response(); await handleProjectsGet(f.ctx, null, list, []);
+  assert.equal(JSON.parse(list.data).projects[0].conversations[0].title, "县域治理的现代化路径");
+  assert.equal((await conversationHistoryWindow(f.ctx, f.session.id)).title, "县域治理的现代化路径");
+  await streamQuickThinking(f.ctx, f.response(), f.root, f.session.id, "再举个例子");
+  assert.equal(f.requests.length, 2);
+  assert.equal(conversationExt(f.session.id).title, "县域治理的现代化路径");
+});
+
+test("自动命名不覆盖生成期间的手动名称，也不改编译建构任务标题", async t => {
+  const f = fixture(t);
+  f.llm.stream = async function* () {
+    patchConversationExt(f.session.id, { title: "我的研究笔记" });
+    yield { type: "text-delta", text: '{"action":"answer","judgment":"解释","title":"模型建议标题"}\n回答' };
+    yield { type: "finish", reason: { kind: "stop" } };
+  };
+  await streamQuickThinking(f.ctx, f.response(), f.root, f.session.id, "一个问题");
+  assert.equal(conversationExt(f.session.id).title, "我的研究笔记");
+  patchConversationExt(f.session.id, { title: null, uno_job_id: "compile-job", task_kind: "compile" });
+  f.llm.stream = async function* () {
+    yield { type: "text-delta", text: '{"action":"answer","judgment":"解释","title":"模型建议标题"}\n回答' };
+    yield { type: "finish", reason: { kind: "stop" } };
+  };
+  await streamQuickThinking(f.ctx, f.response(), f.root, f.session.id, "任务问题");
+  assert.equal(conversationExt(f.session.id).title, null);
+});
+
+test("标题缺失或格式无效时用首问兜底，中文与 emoji 截断不损坏字符", async t => {
+  const f = fixture(t);
+  assert.equal(normalizeConversationTitle(" \n货币\t政策  传导\r "), "货币 政策 传导");
+  assert.equal(Array.from(normalizeConversationTitle("😀".repeat(40))).length, 32);
+  assert.equal(parseThinkingIntent('{"action":"answer","judgment":"解释","title":{}}').title, undefined);
+  await streamQuickThinking(f.ctx, f.response(), f.root, f.session.id, "货币政策如何影响信贷供给？", { retrieve: () => [] });
+  assert.equal(conversationExt(f.session.id).title, "货币政策如何影响信贷供给？");
+});
+
+test("未成功回答不落自动标题，已有原生标题在侧栏可见", async t => {
+  const f = fixture(t);
+  patchConversationExt(f.session.id, { project_id: ensureDefaultProject().id });
+  f.llm.stream = async function* () {
+    yield { type: "text-delta", text: '{"action":"answer","judgment":"解释","title":"未完成的主题"}\n半句' };
+    yield { type: "finish", reason: { kind: "error", failure: { message: "服务不可用" } } };
+  };
+  await streamQuickThinking(f.ctx, f.response(), f.root, f.session.id, "问题");
+  assert.equal(conversationExt(f.session.id).title, undefined);
+  globalThis.fetch = async () => ({ json: async () => ({ type: "server-response", result: { ok: true, value: { items: [{ sessionId: f.session.id, updatedAt: Date.now(), projections: { values: { title: "原生主题" } } }] } } }) });
+  const list = f.response(); await handleProjectsGet(f.ctx, null, list, []);
+  assert.equal(JSON.parse(list.data).projects[0].conversations[0].title, "原生主题");
 });
 
 test("真实检索快照返回正文，预算截断显式标注，空库无伪造来源", t => {

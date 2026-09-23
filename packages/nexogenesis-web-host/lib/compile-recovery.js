@@ -1,4 +1,5 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { isContentSafetyRejection } from '../../nexogenesis-tools/lib/content-safety.js';
 import { sha } from '../../nexogenesis-tools/lib/harness/uno-storage.js';
 import { workflowCharLimit, workflowOutputLimit, workflowReasoning } from './workflow-limits.js';
 
@@ -64,9 +65,10 @@ export function validateCompileRecovery(value,{responseText,parsedOriginal}) {
 export function classifyCompileFailure(error,signalAborted=false) {
   const code=String(error?.code??'');
   if(signalAborted)return {category:'execution_stop',automatic_recovery:false,retryable:true};
+  if(isContentSafetyRejection(error))return {category:'content_safety',automatic_recovery:false,retryable:false};
   if(['UNO_PROVIDER_BUDGET','UNO_STAGE_BUDGET','UNO_REVIEW_RESERVE','UNO_BUDGET'].includes(code))return {category:'budget',automatic_recovery:false,retryable:true};
   if(['UNIT_CONTEXT_LIMIT','COMPILE_RECOVERY_CONTEXT_LIMIT','UNO_CONTEXT_BUDGET','UNO_CONTEXT_ADAPTER'].includes(code))return {category:'context_limit',automatic_recovery:false,retryable:false};
-  if(['REVISION_CONFLICT','STALE_EVIDENCE','CARD_RETIRED'].includes(code))return {category:'state_conflict',automatic_recovery:false,retryable:false};
+  if(['REVISION_CONFLICT','STALE_EVIDENCE','CARD_RETIRED','UNDELIVERED_EVIDENCE'].includes(code))return {category:'state_conflict',automatic_recovery:false,retryable:false};
   if(code.startsWith('COMPILE_RECOVERY_'))return {category:'response_contract',automatic_recovery:false,retryable:false};
   if(code==='INVALID_GENERATION_RESPONSE')return {category:'response_contract',automatic_recovery:false,retryable:false};
   if(code==='MODEL_EMPTY_RESPONSE')return {category:'response_contract',automatic_recovery:false,retryable:true};

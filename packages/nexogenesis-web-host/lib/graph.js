@@ -3,6 +3,9 @@ import { BOOK_UNIT_REF, bookExtractionBase, sameBookUnitSource } from '../../nex
 import { bookEvidencePath, bookEvidenceRevision } from '../../nexogenesis-tools/lib/uno/book-evidence.js';
 import { readUnoUnit, unoPath, unoRevision, sha } from '../../nexogenesis-tools/lib/harness/uno-storage.js';
 import { resolveKnowledgeRef, knowledgeRef } from './project-knowledge.js';
+import { readReaderNotes } from '../../nexogenesis-tools/lib/uno/reader-notes.js';
+import { unoCardRef } from '../../nexogenesis-tools/lib/harness/uno-storage.js';
+import { currentInstanceRegistry } from '../../nexogenesis-tools/lib/instances/registry.js';
 /**
  * /api/graph and /api/cards compatibility handlers (M4 fs-direct subset).
  *
@@ -400,6 +403,7 @@ export async function handleCardGet(ctx, _req, res, _trustedHosts, projectRoot, 
 	const domainTitles=new Map(listDomainsV2(projectRoot).map(d=>[d.id,d.title]));
 	const titleOf = (target) => String(cards.get(target)?.meta.title ?? domainTitles.get(target) ?? target);
 	const domains = Array.isArray(meta.domains) ? meta.domains : [];
+	const libraryId = resolved.scope ?? currentInstanceRegistry(projectRoot).instances.find(item => resolve(item.root) === resolve(projectRoot))?.id;
 	json(res, 200, {
 		id: resolved.scope ? knowledgeRef(resolved.scope, id) : id,
 		title: String(meta.title ?? id),
@@ -412,6 +416,8 @@ export async function handleCardGet(ctx, _req, res, _trustedHosts, projectRoot, 
     assets,library_id:resolved.scope??null,
 		updated: String(meta.updated ?? ""),
 		body: card.body
+		,revision:unoRevision(projectRoot,unoCardRef(projectRoot,card)), edit_id:libraryId && !['archived','superseded'].includes(meta.lifecycle) ? knowledgeRef(libraryId,id) : null,
+    user_notes:readReaderNotes(projectRoot,id), user_edited_at:meta.user_edited_at
 		,summary:meta.summary,quality_notes:meta.quality_notes,superseded_by:meta.superseded_by
 	});
 }

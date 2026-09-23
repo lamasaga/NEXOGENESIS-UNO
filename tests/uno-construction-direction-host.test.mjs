@@ -95,8 +95,8 @@ function fixture(t,{ids=['a'],missingSource=false,bookSourceMode=null,longSource
   const job=()=>readCompileJob(root,id),budget=()=>getProviderBudget(root,id);
   async function api(path,body={}){const req=Object.assign(Readable.from([Buffer.from(JSON.stringify(body))]),{url:'/api/uno'+path,method:'POST',headers:{'content-type':'application/json'}}),res=response();await handleUnoApi(ctx,req,res,root);return JSON.parse(res.data);}
   async function start(options={}){const result=await api('/jobs',{mode:'construct',card_ids:ids,notes:'检查市场竞争的限定条件',continuous:true,external_images:false,delivery:'auto',budget_calls:20,orchestration_profile:'bounded-workflow-v1',construction_profile:'direction-driven-v1',...options});id=result.id;return result;}
-  async function recompile(){writeDomainFixture(root,'economics','信息与经济机制');synchronizeUnassignedPool(root,{card_ids:[ids[0]]});const result=await api('/unassigned/'+ids[0]+'/recompile',{});id=result.id;return result;}
-  async function organize(){writeDomainFixture(root,'economics','信息与经济机制');synchronizeUnassignedPool(root,{card_ids:[ids[0]]});const result=await api('/unassigned/'+ids[0]+'/organize',{});id=result.id;return result;}
+  async function recompile(){writeDomainFixture(root,'economics','信息与经济机制');synchronizeUnassignedPool(root,{card_ids:[ids[0]]});const result=await api('/unassigned/'+encodeURIComponent(ids[0])+'/recompile',{});id=result.id;return result;}
+  async function organize(){writeDomainFixture(root,'economics','信息与经济机制');synchronizeUnassignedPool(root,{card_ids:[ids[0]]});const result=await api('/unassigned/'+encodeURIComponent(ids[0])+'/organize',{});id=result.id;return result;}
   async function next(phase='read',role='author'){await wait(()=>prompts.length||!hasUnoJobRunning(root));assert.ok(prompts.length,'Host stopped: '+job().detail);const prompt=prompts.shift();assert.equal(job().phase,phase);assert.equal(job().role,role);return prompt;}
   const payload=prompt=>JSON.parse(prompt.content.find(block=>block.type==='text'&&block.text.startsWith('{')).text);
   async function answer(prompt,actions){
@@ -122,6 +122,15 @@ function fixture(t,{ids=['a'],missingSource=false,bookSourceMode=null,longSource
   async function idle(){await wait(()=>!hasUnoJobRunning(root));return job();}
   t.after(async()=>{if(id&&hasUnoJobRunning(root)){await api('/jobs/'+id+'/cancel',{version:job().version});await idle();}globalThis.fetch=oldFetch;if(oldHome===undefined)delete process.env.DSH_HOME;else process.env.DSH_HOME=oldHome;rmSync(root,{recursive:true,force:true});});
   return {root,source,quote,cardPath,job,budget,api,start,recompile,organize,next,payload,answer,conclude,deferMissing,idle,prompts,rpc,turns,directCalls};
+}
+
+for(const cardId of ['zhou tou-example','中文卡片（案例）','literal%20value'])for(const operation of ['recompile','organize']){
+  test(`unassigned-card ${operation} preserves encoded stable ID ${cardId}`,async t=>{
+    const f=fixture(t,{ids:[cardId]});await f[operation]();const final=await f.idle();
+    assert.equal(final.status,'completed');assert.deepEqual(final.scope,[cardId]);
+    assert.deepEqual(loadCards(f.root).get(cardId).meta.domains,['economics']);
+    assert.equal(loadCards(f.root).size,1);assert.equal(f.budget().used,operation==='recompile'?3:1);
+  });
 }
 
 test('unassigned-card domain-only route assigns an existing domain without rewriting content',async t=>{

@@ -2,10 +2,10 @@ import {CONSTRUCTION_CONTROLS,CONSTRUCTION_OPERATIONS,validateConstructionContro
 import { selectionSummary } from '../../nexogenesis-tools/lib/uno/history.js';
 import { resumeUnfinishedBatch } from '../../nexogenesis-tools/lib/uno/recovery.js';
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { loadCards, listInbox } from "../../nexogenesis-tools/lib/cards.js";
-import { displayType, safeId } from "../../nexogenesis-tools/lib/uno-contract.js";
+import { displayType, safeId, safeCardId } from "../../nexogenesis-tools/lib/uno-contract.js";
 import { CARD_CLASSIFICATION_CONTRACT, CARD_TYPES, CARD_TYPE_LABELS, domainCatalogRows } from '../../nexogenesis-tools/lib/uno/card-classification.js';
 import { listDomainsV2 } from '../../nexogenesis-tools/lib/uno/knowledge.js';
 import { sha, readUnoReceipt, readUnoUnit, unoPath, unoRevision } from "../../nexogenesis-tools/lib/harness/uno-storage.js";
@@ -149,7 +149,13 @@ export function recoverInterruptedUnoJobs(root) {
   return result;
 }
 function inboxCompilationInventory(root, jobs) {
-  const inbox = listInbox(root).map(row=>({...row,compile_available:row.size<=50*1024*1024,compile_max_bytes:50*1024*1024,upload_max_bytes:256*1024*1024,...(row.size>50*1024*1024?{compile_unavailable_reason:'原件已保存；直接编译最多 50 MiB。请拆分材料或转换为较小的文本后重新导入。'}:{})})), ordered = [...jobs].sort((a,b) => String(b.updated_at??b.created_at??'').localeCompare(String(a.updated_at??a.created_at??'')));
+  const compileMaxBytes=50*1024*1024,uploadMaxBytes=256*1024*1024;
+  const inbox = listInbox(root).flatMap(row=>{
+    try{
+      const size=statSync(resolve(root,'00-Inbox',row.path)).size,compileAvailable=size<=compileMaxBytes;
+      return [{...row,size,compile_available:compileAvailable,compile_max_bytes:compileMaxBytes,upload_max_bytes:uploadMaxBytes,...(!compileAvailable?{compile_unavailable_reason:'原件已保存；直接编译最多 50 MiB。请拆分材料或转换为较小的文本后重新导入。'}:{})}];
+    }catch{return [];}
+  }), ordered = [...jobs].sort((a,b) => String(b.updated_at??b.created_at??'').localeCompare(String(a.updated_at??a.created_at??'')));
   const archived_sources = [], sources = [];
   for (const row of inbox) {
     const source = row.path.startsWith('00-Inbox/') ? row.path : `00-Inbox/${row.path}`;
@@ -440,7 +446,12 @@ export async function handleUnoApi(ctx, req, res, root,appRoot=root) {
       library_id:body.library_id,request_id:body.request_id,budget_calls:12,inherit_preferences:false},appRoot)));}
     catch(error){if(error.code?.startsWith('ISOLATION_'))throw new HttpError(409,error.message);throw error;}
   }
-  const unassignedMatch=/^\/unassigned\/([a-zA-Z0-9_-]+)(?:\/(recompile|organize|create-domain))?$/.exec(rest);
+  const unassignedMatch=/^\/unassigned\/([^/]+)(?:\/(recompile|organize|create-domain))?$/.exec(rest);
+  if(unassignedMatch){
+    try{unassignedMatch[1]=decodeURIComponent(unassignedMatch[1]);}
+    catch{throw new HttpError(400,'卡片标识编码无效。');}
+    if(!safeCardId(unassignedMatch[1]))throw new HttpError(400,'卡片标识无效。');
+  }
   if(unassignedMatch&&req.method==='POST'&&unassignedMatch[2]==='recompile'){
     const card=listUnassignedCards(root).find(row=>row.id===unassignedMatch[1]);
     if(!card)throw new HttpError(404,'未组织池中没有这张卡片。');
@@ -549,8 +560,6 @@ export async function handleUnoApi(ctx, req, res, root,appRoot=root) {
     job.resume_budget_calls=allowance;
     if(job.workflow===BOOK_WORKFLOW&&!job.repair_origin)job.compile_isolation=COMPILE_ISOLATION;
     prepareBookResume(job);
-    // Explicit resume may retry deferred work, never already processed sources.
-    for(const [ref,outcome] of Object.entries(job.book_outcomes??{}))if(outcome.status==='deferred'){(job.book_defer_history??=[]).push({ref,...outcome});delete job.book_outcomes[ref];}
     if(job.failures.length)job.phase='prepare';else job.phase='read';
     armResumeGuard(job,resumePlan);
     delete job.error_code;

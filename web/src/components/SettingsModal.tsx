@@ -1,4 +1,5 @@
 import { KnowledgeProcessing } from './settings/KnowledgeProcessing';
+import { AppearancePicker } from './settings/AppearancePicker';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { fetchSettings, saveSettings, fetchUnoPreferences, saveUnoPreferences, type UnoPreferences, type ModelProvider, type ModelConnection, type VisionMode, type Settings } from "../api/client";
 import { normalizeModelSettings, validateModelSettings } from "../../../packages/nexogenesis-tools/lib/model-providers.js";
@@ -15,7 +16,7 @@ interface Props {
 type SettingsSection = "general" | "model" | "knowledge" | "expression";
 
 const SECTION_COPY: Record<SettingsSection, { label: string; description: string }> = {
-  general: { label: "常规", description: "管理你的显示名称，以及这些设置作用于哪里。" },
+  general: { label: "常规", description: "选择界面配色，管理显示名称与设置范围。" },
   model: { label: "模型连接", description: "配置 API 服务与模型，测试连接后保存；设置作用于当前 UNO。" },
   knowledge: { label: "知识处理", description: "" },
   expression: { label: "思维体表达", description: "选择当前项目使用的知识库，并调整回答的组织与措辞。" },
@@ -192,9 +193,9 @@ export function SettingsModal({ onClose, initialSection = "model", onSaved, proj
           <button className="settings-close" type="button" aria-label="关闭设置" onClick={onClose}><CloseIcon /></button>
         </header>
 
-        <fieldset className="settings-content" disabled={saving || !settings}>
+        <fieldset className="settings-content" disabled={saving || (!settings && activeSection !== "general")}>
           {!settings && !status && <div className="settings-loading" role="status">正在读取设置…</div>}
-          {activeSection === "general" && <GeneralSettings username={username} onUsernameChange={setUsername} />}
+          {activeSection === "general" && <GeneralSettings username={username} onUsernameChange={setUsername} loading={!settings} />}
           {activeSection === "model" && <ModelConnectionFields
             settings={settings} connection={connection} apiKey={apiKey} showApiKey={showApiKey}
             onProviderChange={chooseProvider} onApiKeyChange={setApiKey} onChange={patch => { setConnection(current => ({ ...current, ...patch })); setStatus(null); }}
@@ -240,11 +241,12 @@ export function SettingsModal({ onClose, initialSection = "model", onSaved, proj
   </div>;
 }
 
-function GeneralSettings({ username, onUsernameChange }: { username: string; onUsernameChange: (value: string) => void }) {
+function GeneralSettings({ username, onUsernameChange, loading }: { username: string; onUsernameChange: (value: string) => void; loading: boolean }) {
   return <div className="settings-page">
+    <AppearancePicker />
     <SettingsGroup title="个人信息" description="用于页面中的称呼与本地会话标识。">
       <SettingsField label="显示名称" hint="只影响当前 Nexo 知识库中的显示，不会上传为公开资料。">
-        <input value={username} maxLength={40} onChange={(event) => onUsernameChange(event.target.value)} />
+        <input value={username} maxLength={40} disabled={loading} onChange={(event) => onUsernameChange(event.target.value)} />
       </SettingsField>
     </SettingsGroup>
     <SettingsGroup title="保存范围" description="Nexo 的知识内容与程序设置分开保存。">

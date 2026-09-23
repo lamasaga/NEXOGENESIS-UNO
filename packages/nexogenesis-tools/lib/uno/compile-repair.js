@@ -75,7 +75,8 @@ export function prepareIsolationRepair(root,{item_id,expected_revision,notes='',
     }
     work.repairs={...work.repairs,[id]:0};work.repair_counts={...work.repair_counts,[id]:{}};
     work.repair_retries={};work.review_retries={};
-    const records=(work.pending_issue_records?.[id]??(work.pending_issues?.[id]??[]).map(message=>({kind:item.repair_kind,related_card_ids:[],message})))
+    const records=(work.pending_issue_records?.[id]??(work.pending_issues?.[id]??item.issues??[]).map(message=>({kind:item.repair_kind,
+      related_card_ids:[...(original.isolation.items[item.item_key].target_ids??[])],message})))
       .map(record=>({kind:record.kind,related_card_ids:[...(record.related_card_ids??[])],message:String(record.message??'').trim()}))
       .filter(record=>record.message);
     work.repair_diagnosis={contract:ISOLATED_REPAIR_DIAGNOSIS,status:'pending',card_id:id,kind:item.repair_kind,

@@ -2,21 +2,21 @@
   flex: 0 0 auto;
   margin: 12px 12px 0;
   padding: 12px 14px;
-  border: 1px solid rgba(130, 186, 212, .24);
+  border: 1px solid rgba(var(--blue-aux-rgb), 0.24);
   border-radius: 10px;
-  background: rgba(28, 43, 54, .38);
-  color: var(--text-secondary, #becbd5);
+  background: rgba(var(--surface-rgb), 0.38);
+  color: var(--text-secondary, var(--ink));
   font-size: 13px;
   line-height: 1.5;
 }
-.conversation-load-notice strong { color: var(--text-primary, #e7edf3); font-weight: 600; }
+.conversation-load-notice strong { color: var(--text-primary, var(--ink-strong)); font-weight: 600; }
 .conversation-load-notice p { margin: 5px 0 0; }
 .conversation-load-notice__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .conversation-load-notice__actions button {
-  border: 1px solid rgba(130, 186, 212, .3);
+  border: 1px solid rgba(var(--blue-aux-rgb), 0.3);
   border-radius: 6px;
   padding: 5px 9px;
-  background: rgba(84, 154, 185, .12);
+  background: rgba(var(--blue-aux-rgb), 0.12);
   color: inherit;
   font: inherit;
   cursor: pointer;

@@ -1,9 +1,11 @@
 import { sha } from '../../nexogenesis-tools/lib/harness/uno-storage.js';
+import { CONTENT_SAFETY_MESSAGE, isContentSafetyRejection } from '../../nexogenesis-tools/lib/content-safety.js';
 import { bookProgress, bookResumeState } from '../../nexogenesis-tools/lib/uno/book-agent.js';
 import { isBookWorkflow } from '../../nexogenesis-tools/lib/uno/book-sources.js';
 import { pendingBatches } from '../../nexogenesis-tools/lib/uno/recovery.js';
 import { normalizeGeneratedEnvelope, parseUnitJSON } from './unit-card-request.js';
 import { isolationEnabled, canIsolateFailure } from '../../nexogenesis-tools/lib/uno/compile-isolation.js';
+import { workRelationEvidenceIssues } from '../../nexogenesis-tools/lib/uno/compile-reference-scope.js';
 import { parseConstructionJSON, validateConstructionAuthorResponse } from './construction-request.js';
 
 export const RESUME_PLAN_CONTRACT='uno-resume-plan-v1';
@@ -42,11 +44,22 @@ function bookPlan(job) {
   if(['completed','ended'].includes(job.status)||job.end_requested)return finish(job,{kind:'complete',reason:'本次编译已结束。',actions:[]});
   if(job.status==='review'&&job.phase==='domain_review')return finish(job,{kind:'review',reason:'请先处理领域治理提案；确认或暂缓后才会继续。',actions:[]});
   const progress=bookProgress(job),range=bookResumeState(job),failure=failureOf(job);
-  const focusedRef=job.book_focus_refs?.find(candidate=>job.unit_work?.[candidate]&&job.book_outcomes?.[candidate]?.status!=='processed');
+  const focusedRef=job.book_focus_refs?.find(candidate=>job.unit_work?.[candidate]&&![ 'processed','quarantined' ].includes(job.book_outcomes?.[candidate]?.status));
   const deferredRef=(job.book_units??[]).find(unit=>job.book_outcomes?.[unit.ref]?.status==='deferred'&&job.unit_work?.[unit.ref])?.ref;
   const ref=focusedRef??deferredRef??progress.focus?.[0]?.ref,work=ref?job.unit_work?.[ref]:null;
   const rejectedIds=Object.keys(work?.pending_issues??{}),alreadyDeferred=job.book_outcomes?.[ref]?.status==='deferred';
   if(job.phase==='done'&&!range.available)return finish(job,{kind:'blocked',reason:range.reason,actions:[]});
+  if(job.workflow==='uno-unit-compile-v3'&&alreadyDeferred&&!progress.pending&&!rejectedIds.length)return finish(job,{kind:'decision',
+    reason:'主线已处理完毕；延期内容仍未完成。可以单独重试一个延期单元，其他延期项保持不变。',
+    actions:[action('retry-deferred-unit',`重试延期单元：${job.book_units.find(unit=>unit.ref===ref)?.title??'当前单元'}`,'只重新打开这个延期单元；不重跑已完成或其他延期内容，仍需通过原审核。')]});
+  if(failure?.code==='UNDELIVERED_EVIDENCE'&&isolationEnabled(job)&&workRelationEvidenceIssues(work).length)return finish(job,{kind:'resume',
+    reason:'缺少完整关系依据的候选将保留到未组织池；合规卡片继续审核保存，旧延期项保持不变。',
+    primary:action('resume','保留问题并继续编译','复用已生成候选，隔离依据不完整的关系问题，不重新生成整个单元。'),actions:[]});
+  if(job.operation==='isolated-card-repair'&&failure?.code==='UNDELIVERED_EVIDENCE')return finish(job,{kind:'resume',
+    reason:'关系目标卡在修复期间发生了变化。系统会读取它的最新完整正文，再重新核对当前卡；写入前的安全检查已经阻止旧依据落库。',
+    primary:action('resume','读取最新目标卡并继续','刷新当前关系目标的正文与版本，只重新执行当前检查点；通过复核后才会保存。'),actions:[]});
+  if(isContentSafetyRejection(failure))return finish(job,{kind:ref?'decision':'blocked',reason:CONTENT_SAFETY_MESSAGE,
+    actions:ref?[action('defer-unit','延期当前单元并继续','保留当前单元及失败记录，继续处理后续单元；延期内容仍算未完成。')]:[]});
   if(repeatedNoProgress(job))return finish(job,{kind:'decision',reason:'上一次继续没有改变当前检查点，再次点击同一动作仍会回到相同停点。',
     actions:ref?[action('defer-unit','延期当前单元并继续','保留原文、失败记录和已保存成果，把当前单元列为延期后处理下一单元。')]:[]});
   if(isolationEnabled(job)&&failure&&canIsolateFailure(failure)&&range.available)return finish(job,{kind:'resume',
@@ -80,9 +93,8 @@ function bookPlan(job) {
     primary:action('resume','重新请求当前单元','丢弃当前单元的空传输响应，保留其他单元和已保存成果。'),actions:[]});
   if(failure?.code==='MODEL_OUTPUT_TRUNCATED')return finish(job,{kind:'resume',reason:failure.message,
     primary:action('resume','续写当前单元','从已保存的完整候选后继续，不重新生成已保留候选。'),actions:[]});
-  if(job.operation==='isolated-card-repair'&&failure?.code==='UNDELIVERED_EVIDENCE')return finish(job,{kind:'resume',
-    reason:'关系目标卡在修复期间发生了变化。系统会读取它的最新完整正文，再重新核对当前卡；写入前的安全检查已经阻止旧依据落库。',
-    primary:action('resume','读取最新目标卡并继续','刷新当前关系目标的正文与版本，只重新执行当前检查点；通过复核后才会保存。'),actions:[]});
+  if(failure?.code==='UNDELIVERED_EVIDENCE')return finish(job,{kind:ref?'decision':'blocked',reason:'关系依据尚未完整交付，普通重试不能解决；请核对依据或延期当前单元。',
+    actions:ref&&!alreadyDeferred?[action('defer-unit','延期当前单元并继续','保留候选和失败记录，不绕过关系依据与版本检查。')]:[]});
   if(failure?.retryable)return finish(job,{kind:'resume',reason:failure.message,
     primary:action('resume','重试当前检查点','保留已保存成果，只重新执行失败的当前检查点。'),actions:[]});
   if(range.available)return finish(job,{kind:'resume',reason:'任务仍有明确的未完成范围。',

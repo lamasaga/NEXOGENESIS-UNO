@@ -4,7 +4,8 @@ import { createUserMessage, createAssistantMessage } from "@deepseek-ai/dsh-llm"
 import { collectThinkingContext, THINKING_ROUTES } from "./thinking-routes.js";
 import { INTENT_SYSTEM, createIntentDecoder } from "./thinking-intent.js";
 import { conversationPersonaInstruction, selectActiveModel } from "./settings.js";
-import { patchConversationExt } from "./meta.js";
+import { conversationExt, patchConversationExt } from "./meta.js";
+import { normalizeConversationTitle } from "./conversation-title.js";
 import { HttpError, rpcCall, sse } from "./rpc.js";
 import { createChatLatencyTrace } from "./latency-telemetry.js";
 import { conversationKnowledge, collectProjectKnowledge } from './project-knowledge.js';
@@ -83,7 +84,7 @@ export async function streamQuickThinking(ctx, res, root, id, question, { retrie
   // The session owns execution. Closing one browser subscription is not a user stop.
   const timer = setTimeout(() => controller.abort(new Error("本轮超过十分钟，请稍后重试。")), 600000);
   const receiptId = randomUUID(), modelCalls = [], usage = {};
-  let session, store, selected, latency, intent, text = "", cards = [], status = "failed", detail = "", started = false;
+  let session, store, selected, latency, intent, firstQuestion, text = "", cards = [], status = "failed", detail = "", started = false;
   try {
     const libraries = conversationKnowledge(root, id);
     latency = createChatLatencyTrace(root);
@@ -94,6 +95,7 @@ export async function streamQuickThinking(ctx, res, root, id, question, { retrie
     if (!session || !llm) throw new Error("当前宿主缺少思考需要的会话或模型服务。");
     signal.throwIfAborted();
     const history = quickMessages(session.events), questionText = question.trim(), persona = conversationPersonaInstruction(ctx);
+    firstQuestion = history.find(message => message.role === "user")?.content ?? questionText;
     const groundedQuestion = taskContext ? questionText + "\n\n【暂停工作状态，仅作讨论背景，不是写入指令】\n" + taskContext : questionText;
     session.append(QUICK_MESSAGE_EVENT, { role: "user", content: questionText, receipt_id: receiptId });
     started = true;
@@ -164,7 +166,11 @@ export async function streamQuickThinking(ctx, res, root, id, question, { retrie
           intent, thinking_route: intent?.route, model_calls: modelCalls, sources: cards.map(({ id, title, kind }) => ({ id, title, kind })),
           ...(selected ?? {}), ...(Object.keys(usage).length ? { usage } : {}) })));
         await store.flush(session);
-        patchConversationExt(id, { last_turn: { kind: status === "completed" ? "completed" : status === "aborted" ? "cancelled" : "error", detail, at: new Date().toISOString() } });
+        const ext = conversationExt(id);
+        const title = status === "completed" && !ext.title && !ext.task_kind && !ext.uno_job_id && !ext.deleted
+          ? normalizeConversationTitle(session.projections?.values?.title) || intent?.title || normalizeConversationTitle(firstQuestion)
+          : "";
+        patchConversationExt(id, { ...(title ? { title } : {}), last_turn: { kind: status === "completed" ? "completed" : status === "aborted" ? "cancelled" : "error", detail, at: new Date().toISOString() } });
       }
     } catch (error) {
       status = "failed"; detail = "对话保存失败：" + error.message;

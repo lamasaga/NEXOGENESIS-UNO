@@ -1,0 +1,20 @@
+.appearance-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.appearance-option { position: relative; display: grid; gap: 14px; padding: 12px; border: 1px solid rgba(var(--line-rgb), .16); border-radius: 11px; background: var(--graphite-panel); cursor: pointer; }
+.appearance-option:has(input:checked) { border-color: var(--blue-aux-border); box-shadow: 0 0 0 1px var(--blue-aux-border); }
+.appearance-option:has(input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 4px; }
+.appearance-option input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.appearance-preview { height: 104px; display: grid; grid-template-columns: 26% 1fr; overflow: hidden; border: 1px solid #ffffff18; border-radius: 6px; background: #343a43; }
+.appearance-preview > i { background: #2b3139; border-right: 1px solid #ffffff12; }
+.appearance-preview > span { display: grid; align-content: center; gap: 9px; padding: 18px; }
+.appearance-preview b { display: block; width: 78%; height: 5px; border-radius: 3px; background: #9ba8b6; }
+.appearance-preview b + b { width: 55%; opacity: .55; }
+.appearance-preview em { width: 32px; height: 13px; margin-top: 5px; border-radius: 4px; background: var(--blue-primary); }
+[data-preview="warm-white"] .appearance-preview { background: #faf8f3; border-color: #d8d3c9; }
+[data-preview="warm-white"] .appearance-preview > i { background: #eeebe4; border-color: #d8d3c9; }
+[data-preview="warm-white"] .appearance-preview b { background: #747873; }
+.appearance-option__copy { display: grid; gap: 4px; padding: 0 24px 2px 2px; }
+.appearance-option__copy strong { color: var(--ink-strong); font-size: 13px; font-weight: 600; }
+.appearance-option__copy small { color: var(--ink-muted); font-size: 11px; }
+.appearance-option__check { position: absolute; right: 15px; bottom: 23px; color: var(--blue-aux-text); font-size: 17px; }
+.appearance-notice { color: var(--ink-muted); font-size: 11px; margin: 12px 0 0; }
+@media (max-width: 380px) { .appearance-options { gap: 10px; } .appearance-option { padding: 9px; } .appearance-preview { height: 82px; } }

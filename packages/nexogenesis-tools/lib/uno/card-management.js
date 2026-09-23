@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { loadCards } from '../cards.js';
+import { safeCardId } from '../uno-contract.js';
 import { listDomainsV2 } from './knowledge.js';
 import { applyDomainGovernance, readDomainGovernanceState, synchronizeUnassignedPool } from './domain-governance.js';
 import { validateDomainDefinition } from './domain-contract.js';
@@ -41,7 +42,7 @@ export function listUnassignedCards(root) {
 /** Remove one unassigned card and clean its structural references atomically. */
 export function deleteUnassignedCard(root, input) {
   const id = String(input?.card_id ?? ''), expected = String(input?.expected_revision ?? '');
-  if (!/^[a-zA-Z0-9_-]{1,100}$/.test(id) || input?.confirm_id !== id || !/^[0-9a-f]{64}$/i.test(expected)) throw new Error('删除确认、卡片 ID 或版本无效。');
+  if (!safeCardId(id) || input?.confirm_id !== id || !/^[0-9a-f]{64}$/i.test(expected)) throw new Error('删除确认、卡片 ID 或版本无效。');
   const previous=readUnoReceipt(root,input.key);
   if(previous){if(previous.input_hash!==sha(JSON.stringify(input)))throw Object.assign(new Error('同一批次不能改写为其他内容。'),{code:'IDEMPOTENCY_CONFLICT'});return previous;}
   const cards = loadCards(root, { includeInactive: true }), target = cards.get(id);
@@ -100,7 +101,7 @@ export function deleteUnassignedCard(root, input) {
 /** Explicit manual governance: create one durable domain with this card as its first member. */
 export function createDomainFromUnassignedCard(root, input) {
   const cardId=String(input?.card_id??''),expected=String(input?.expected_revision??''),definition=input?.domain??{};
-  if(!/^[a-zA-Z0-9_-]{1,100}$/.test(cardId)||!/^[0-9a-f]{64}$/i.test(expected))throw new Error('卡片 ID 或版本无效。');
+  if(!safeCardId(cardId)||!/^[0-9a-f]{64}$/i.test(expected))throw new Error('卡片 ID 或版本无效。');
   const title=String(definition.title??'').trim(),summary=String(definition.summary??'').trim();
   const domain={id:String(definition.id??'').trim()||`domain-${sha(`${cardId}\0${title}`).slice(0,16)}`,title,summary,
     core_questions:uniqueText(definition.core_questions),includes:uniqueText(definition.includes),excludes:uniqueText(definition.excludes),

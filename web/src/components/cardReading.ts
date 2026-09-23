@@ -20,5 +20,5 @@ export function fitReaderFrame(frame: ReaderFrame, viewport: { width: number; he
 }
 export function initialReaderFrame(index = 0): ReaderFrame {
   const viewport = typeof window === "undefined" ? { width: 1280, height: 800 } : { width: window.innerWidth, height: window.innerHeight };
-  return fitReaderFrame({ x: viewport.width - 600 - index * 28, y: 64 + index * 28, width: 560, height: Math.min(760, viewport.height - 100) }, viewport);
+  return fitReaderFrame({ x: viewport.width - 760 - index * 28, y: 64 + index * 28, width: 720, height: Math.min(900, viewport.height - 100) }, viewport);
 }

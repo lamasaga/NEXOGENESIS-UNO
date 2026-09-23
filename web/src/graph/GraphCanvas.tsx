@@ -9,6 +9,8 @@ import { nodeRadius } from "./cardVisuals";
 import type { GraphData, GraphNode } from "./types";
 import { useGraphForces } from "./useGraphForces";
 import { GraphControls } from "./GraphControls";
+import { subscribeAppearance } from "../appearance";
+import { readGraphPalette } from "./palette";
 
 interface Props {
   data: GraphData;
@@ -52,6 +54,7 @@ function GraphCanvasView({ data: source, engine, onNodeClick, activityTick = 0, 
     let raf = 0;
     let disposed = false;
     let last = performance.now();
+    let palette = readGraphPalette();
 
     // 静息层：按当前视口的实际像素缓存；缩放/平移后重新矢量化，避免放大旧位图。
     const off = document.createElement("canvas");
@@ -94,14 +97,14 @@ function GraphCanvasView({ data: source, engine, onNodeClick, activityTick = 0, 
 
       const offCtx = off.getContext("2d")!;
       offCtx.setTransform(1, 0, 0, 1, 0, 0);
-      offCtx.fillStyle = THEME.colors.background;
+      offCtx.fillStyle = palette.background;
       offCtx.fillRect(0, 0, pixelWidth, pixelHeight);
 
       const tx = w / 2 - camera.x * camera.scale;
       const ty = h / 2 - camera.y * camera.scale;
       offCtx.setTransform(dpr * camera.scale, 0, 0, dpr * camera.scale,
         dpr * tx, dpr * ty);
-      drawRestLayer(offCtx, scene, now, camera.scale);
+      drawRestLayer(offCtx, scene, now, camera.scale, palette);
       restCacheDirty = false;
     };
 
@@ -150,7 +153,7 @@ function GraphCanvasView({ data: source, engine, onNodeClick, activityTick = 0, 
       actCtx.clearRect(0, 0, w * dpr, h * dpr);
       const attention = engine.attentionLevel(now);
       if (attention > 0) {
-        const [r, g, b] = THEME.colors.attentionVeil;
+        const [r, g, b] = palette.light ? [238, 235, 228] : THEME.colors.attentionVeil;
         actCtx.setTransform(1, 0, 0, 1, 0, 0);
         actCtx.fillStyle = `rgba(${r}, ${g}, ${b}, ${THEME.colors.attentionVeilAlpha * attention})`;
         actCtx.fillRect(0, 0, w * dpr, h * dpr);
@@ -162,11 +165,16 @@ function GraphCanvasView({ data: source, engine, onNodeClick, activityTick = 0, 
       labelCtx.setTransform(1, 0, 0, 1, 0, 0);
       labelCtx.clearRect(0, 0, w * dpr, h * dpr);
       setWorld(labelCtx);
-      drawLabelLayer(labelCtx, scene, engine, camera, hoverRef.current, now, { width: w, height: h });
+      drawLabelLayer(labelCtx, scene, engine, camera, hoverRef.current, now, { width: w, height: h }, palette);
 
       if (engine.hasAttention() || dragRef.current !== null || restCacheDirty) schedule();
     };
     wakeRef.current = schedule;
+    const unsubscribeAppearance = subscribeAppearance(() => {
+      palette = readGraphPalette();
+      restCacheDirty = true;
+      schedule();
+    });
     updateDataRef.current = next => {
       graph = next;
       scene = buildScene(next.nodes, buildFibers(next).fibers);
@@ -244,6 +252,7 @@ function GraphCanvasView({ data: source, engine, onNodeClick, activityTick = 0, 
 
     return () => {
       disposed = true;
+      unsubscribeAppearance();
       saveCamera();
       window.removeEventListener("pagehide", saveCamera);
       cancelAnimationFrame(raf);

@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { resolvePreprocessPython } from './python-runtime.js';
 import { existsSync, readFileSync, readdirSync, statSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,11 +39,12 @@ export function readGuide(name='overview') {
   const file={overview:'README.md',types:'card-types.md',relations:'relations.md',domains:'domains.md',examples:'examples.md'}[name];
   if(!file)throw new Error('可读约定：overview、types、relations、domains、examples');return readFileSync(resolve(guideRoot,file),'utf8');
 }
-export function preprocessSource(root,source,signal,modern=false,materialKind,unitCharLimit=60000) {
+export async function preprocessSource(root,source,signal,modern=false,materialKind,unitCharLimit=60000) {
   if(!source.startsWith('00-Inbox/'))throw new Error('只能预处理本轮选定的 Inbox 材料');
+  const sourcePath=unoPath(root,source),python=await resolvePreprocessPython({signal});
   return new Promise((resolveResult,reject)=>{
     signal?.throwIfAborted();
-    const child=spawn(process.env.UNO_PYTHON||'python',['-B','-X','utf8',fileURLToPath(new URL('./preprocess.py',import.meta.url))],{windowsHide:true,stdio:['pipe','pipe','pipe']});
+    const child=spawn(python,['-B','-X','utf8',fileURLToPath(new URL('./preprocess.py',import.meta.url))],{windowsHide:true,stdio:['pipe','pipe','pipe']});
     const out=[];let err=Buffer.alloc(0),size=0,failure=null,forceTimer;
     const stop=reason=>{if(failure)return;failure=reason;child.kill();forceTimer=setTimeout(()=>child.kill('SIGKILL'),2000);forceTimer.unref();};
     const aborted=()=>stop(signal.reason??new Error('预处理已取消'));
@@ -51,7 +53,7 @@ export function preprocessSource(root,source,signal,modern=false,materialKind,un
     child.stdout.on('data',data=>{size+=data.length;if(size>40*1024*1024)stop(new Error('预处理输出超过 40 MiB'));else if(!failure)out.push(data);});
     child.stderr.on('data',data=>{err=Buffer.concat([err,data]).subarray(-65536);});child.on('error',error=>{failure??=error;});
     child.on('close',code=>{clearTimeout(timer);clearTimeout(forceTimer);signal?.removeEventListener('abort',aborted);try{if(failure)throw failure;if(code!==0)throw new Error(err.toString('utf8')||'Python 预处理失败');resolveResult(JSON.parse(Buffer.concat(out).toString('utf8')));}catch(e){reject(e);}});
-    child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({path:unoPath(root,source),root:resolve(root),modern,material_kind:materialKind,unit_char_limit:unitCharLimit}));
+    child.stdin.on('error',()=>{});child.stdin.end(JSON.stringify({path:sourcePath,root:resolve(root),modern,material_kind:materialKind,unit_char_limit:unitCharLimit}));
   });
 }
 export function readMaterial(root,ref,offset=0,limit=12000) {

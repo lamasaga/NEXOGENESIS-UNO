@@ -6,6 +6,33 @@ import { armResumeGuard, computeResumePlan, resumeStateFingerprint, settleResume
 
 const book = overrides => ({id:'book',mode:'compile',workflow:BOOK_WORKFLOW,status:'paused',phase:'read',book_units:[{ref:'u1',title:'第一单元',chars:20}],book_outcomes:{},book_focus_refs:['u1'],unit_work:{u1:{phase:'generate',source_revision:'r1'}},sources:[],failures:[],calls:[],receipts:[],...overrides});
 
+test('legacy summary-evidence stop gets a bounded isolation path even after a prior no-progress retry',()=>{
+ const job=book({compile_isolation:'compile-isolation-v1',last_failure:{code:'UNDELIVERED_EVIDENCE',retryable:true},
+   unit_work:{u1:{phase:'check',references:[{id:'target',delivery:'summary'}],cards:[{id:'candidate',relations:[{target:'target'}]}]}}});
+ armResumeGuard(job,computeResumePlan(null,job));settleResumeGuard(job);
+ const before=JSON.stringify(job),plan=computeResumePlan(null,job);
+ assert.equal(plan.kind,'resume');assert.equal(plan.primary.label,'保留问题并继续编译');assert.equal(JSON.stringify(job),before);
+ const unavailable=computeResumePlan(null,book({last_failure:{code:'UNDELIVERED_EVIDENCE',retryable:true}}));
+ assert.equal(unavailable.kind,'decision');assert.deepEqual(unavailable.actions.map(a=>a.id),['defer-unit']);
+});
+
+test('settled main line offers an explicit single deferred retry instead of a generic resume',()=>{
+ const job=book({status:'partial',phase:'done',book_focus_refs:['u2'],book_units:[{ref:'u1',title:'延期章节'},{ref:'u2',title:'留池章节'}],
+   book_outcomes:{u1:{status:'deferred'},u2:{status:'quarantined'}},unit_work:{u1:{phase:'deferred'},u2:{phase:'quarantined'}}});
+ const plan=computeResumePlan(null,job);assert.equal(plan.kind,'decision');assert.deepEqual(plan.actions.map(a=>a.id),['retry-deferred-unit']);
+ assert.match(plan.actions[0].label,/延期章节/);
+});
+
+test('content rejection has an explicit defer decision for both current and legacy checkpoints without mutation',()=>{
+  for(const failure of [{code:'MODEL_CONTENT_REJECTED',message:'内容审核拦截',retryable:false},
+    {code:'UNIT_COMPILE_STOPPED',message:'400 The request was rejected because it was considered high risk',retryable:true}]){
+    const job=book({last_failure:failure}),before=JSON.stringify(job),plan=computeResumePlan(null,job);
+    assert.equal(plan.kind,'decision');assert.match(plan.reason,/供应商的内容安全审核/);
+    assert.deepEqual(plan.actions.map(item=>item.id),['defer-unit']);assert.equal(plan.primary,undefined);
+    assert.equal(JSON.stringify(job),before);
+  }
+});
+
 test('legacy missing-note checkpoint offers retained review only for recoverable nonempty candidates',()=>{
  const make = response => book({last_failure:{code:'UNIT_COMPILE_STOPPED',message:'旧制卡错误',retryable:false},unit_work:{u1:{phase:'generate',last_response:{phase:'generate',text:JSON.stringify(response)}}}});
  const input={cards:[{id:'safe',title:'知识对象',body:'完整正文'}]},job=make(input),before=JSON.stringify(job);

@@ -5,6 +5,7 @@ import type { Camera } from "./camera";
 import { nodeRadius, nodeVisual, sizeFactorOf } from "./cardVisuals";
 import type { GraphNode } from "./types";
 import type { Color } from "./types-extra";
+import { DARK_GRAPH_PALETTE, graphColor, graphNodeColor, type GraphPalette } from "./palette";
 
 const SEG = 22;
 
@@ -83,10 +84,10 @@ function strandPath(
 
 /**  静息层：每条关系一根细线，节点与光晕按当前视口缓存。 */
 export function drawRestLayer(
-  ctx: CanvasRenderingContext2D, scene: Scene, _now: number, cameraScale = 1
+  ctx: CanvasRenderingContext2D, scene: Scene, _now: number, cameraScale = 1, palette = DARK_GRAPH_PALETTE
 ): void {
   for (const f of scene.fibers) {
-    const [r, g, b] = f.relationColor;
+    const [r, g, b] = graphColor(f.relationColor, palette);
     const alpha = f.intra ? 0.2 : 0.26;
     ctx.strokeStyle = `rgba(${r},${g},${b},${alpha})`;
     ctx.lineWidth = 0.7 / cameraScale;
@@ -105,12 +106,12 @@ export function drawRestLayer(
   }
   for (const nd of scene.nodes) {
     const visual = nodeVisual(nd.type);
-    const [r, g, b] = visual.color;
+    const [r, g, b] = graphNodeColor(nd.type, visual.color, palette);
     //  节点面积只由不同邻居数决定，光晕保留类型风格。
     const factor = sizeFactorOf(scene.degrees.get(nd.id) ?? 0);
     if (visual.halo > 0) {
       const glow = ctx.createRadialGradient(nd.x, nd.y, 0, nd.x, nd.y, visual.halo * factor);
-      glow.addColorStop(0, `rgba(${r},${g},${b},0.16)`);
+      glow.addColorStop(0, `rgba(${r},${g},${b},${palette.light ? 0.045 : 0.16})`);
       glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
       ctx.fillStyle = glow;
       ctx.beginPath();
@@ -737,10 +738,11 @@ export function activeSignalColor(hot: number, signal: import("../activation/eng
 export function drawLabelLayer(
   ctx: CanvasRenderingContext2D, scene: Scene, engine: ActivationEngine,
   camera: Camera, hoverId: string | null, now?: number, viewport?: { width: number; height: number },
+  palette: GraphPalette = DARK_GRAPH_PALETTE,
 ): void {
   if (hoverId) {
     const nd = scene.nodes.find((n) => n.id === hoverId);
-    if (nd) drawActiveNodeLabel(ctx, nd, nodeVisual(nd.type).color, camera);
+    if (nd) drawActiveNodeLabel(ctx, nd, graphNodeColor(nd.type, nodeVisual(nd.type).color, palette), camera, palette);
     return;
   }
   if (now === undefined || !viewport) return;
@@ -764,13 +766,13 @@ export function drawLabelLayer(
   const [x, y] = camera.toWorld(px, py, viewport.width, viewport.height);
   // 柔和渐隐底色，没有描边、实心长条或标题位移动画。
   const wash = ctx.createLinearGradient(x, y, x + width, y);
-  wash.addColorStop(0, "rgba(30,38,47,.7)");
-  wash.addColorStop(1, "rgba(30,38,47,.22)");
+  wash.addColorStop(0, `rgba(${palette.labelRgb},.9)`);
+  wash.addColorStop(1, `rgba(${palette.labelRgb},.5)`);
   ctx.fillStyle = wash;
   ctx.beginPath(); ctx.roundRect(x, y, width, height, 7 / scale); ctx.fill();
   ctx.fillStyle = "rgba(88,191,229,.8)";
   ctx.fillRect(x, y + 9 / scale, 2 / scale, height - 18 / scale);
-  ctx.fillStyle = "rgba(231,244,252,.96)";
+  ctx.fillStyle = palette.labelInk;
   ctx.textAlign = "left"; ctx.textBaseline = "top";
   lines.forEach((line, index) => ctx.fillText(line, x + 10 / scale, y + (7 + index * 17) / scale));
   ctx.restore();
@@ -787,6 +789,7 @@ export function compactTitleLines(ctx: CanvasRenderingContext2D, title: string, 
 
 function drawActiveNodeLabel(
   ctx: CanvasRenderingContext2D, node: GraphNode, color: [number, number, number], camera: Camera,
+  palette: GraphPalette,
 ): void {
   const fontSize = 11 / camera.scale;
   const padX = 7 / camera.scale;
@@ -799,14 +802,14 @@ function drawActiveNodeLabel(
   const x = node.x + offset;
   const y = node.y - height / 2;
   const radius = 6 / camera.scale;
-  ctx.fillStyle = "rgba(43,44,49,0.9)";
+  ctx.fillStyle = palette.labelBackground;
   ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},0.48)`;
   ctx.lineWidth = 0.7 / camera.scale;
   ctx.beginPath();
   ctx.roundRect(x, y, width, height, radius);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = "rgba(239,246,255,0.96)";
+  ctx.fillStyle = palette.labelInk;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   ctx.fillText(title, x + padX, y + height / 2);

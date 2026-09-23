@@ -18,7 +18,7 @@ export function isolateCompileItem(work, {key, card_id, kind='card', error, cand
   work.isolation ??= {contract:COMPILE_ISOLATION,items:{}};
   const at=new Date().toISOString(),previous=work.isolation.items[key];
   work.isolation.items[key]={...previous,kind,card_id:card_id??null,status:'open',code:error.code,reason:error.message,
-    created_at:previous?.created_at??at,updated_at:at,...(candidate?{candidate}: {})};
+    created_at:previous?.created_at??at,updated_at:at,...(candidate?{candidate}: {}),...(error.target_ids?{target_ids:[...error.target_ids]}:{})};
   return work.isolation.items[key];
 }
 

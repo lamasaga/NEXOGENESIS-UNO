@@ -16,6 +16,7 @@
  */
 import { networkInterfaces } from "node:os";
 import { applicationIdentity } from "./application.js";
+import { handleCardWrite } from './card-writing.js';
 import { randomBytes } from "node:crypto";
 import { join, resolve as resolvePath } from "node:path";
 import z from "@deepseek-ai/schemastery";
@@ -353,6 +354,11 @@ function mountRoutes(ctx, config, projectRoot) {
 		path: "/api/cards",
 		handler: guard(async (req, res) => {
 			const rest = pathnameOf(req).slice("/api/cards".length);
+			const writing = /^\/([^/]+)\/reader$/.exec(rest);
+			if (req.method === 'POST' && writing) {
+        let id; try { id = decodeURIComponent(writing[1]); } catch { throw new HttpError(400, '卡片标识编码无效。'); }
+        return handleCardWrite(req, res, projectRoot, id);
+      }
 			if (req.method === "GET" && (rest === "" || rest === "/")) {
 				await handleCardList(ctx, req, res, config.trustedHosts, projectRoot);
 				return;

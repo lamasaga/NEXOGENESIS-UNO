@@ -170,12 +170,14 @@ export function Sidebar(p: Props) {
   );
 
   return (
-    <aside className={`sidebar-surface flex w-64 shrink-0 flex-col border-r border-white/[0.06] bg-zinc-950/60${p.collapsed ? " sidebar-surface--collapsed" : ""}`} aria-label={p.collapsed ? "主导航（已收起）" : "主导航"}>
+    <aside id="main-sidebar" className={`sidebar-surface flex w-64 shrink-0 flex-col border-r border-white/[0.06] bg-zinc-950/60${p.collapsed ? " sidebar-surface--collapsed" : ""}`} aria-label={p.collapsed ? "主导航（已收起）" : "主导航"}>
+      <button type="button" className="sidebar-collapse-toggle"
+        title={p.collapsed ? "展开左侧面板" : "收起左侧面板"}
+        aria-label={p.collapsed ? "展开左侧面板" : "收起左侧面板"}
+        aria-expanded={!p.collapsed} aria-controls="main-sidebar" onClick={p.onToggleCollapsed}>
+        {p.collapsed ? <CaretRight size={13} weight="bold" aria-hidden /> : <CaretLeft size={13} weight="bold" aria-hidden />}
+      </button>
       <div className="sidebar-surface__compact" aria-label="侧栏快捷操作">
-        <button type="button" className="sidebar-compact-button sidebar-compact-button--toggle" title="展开左侧面板" aria-label="展开左侧面板" aria-expanded="false" onClick={p.onToggleCollapsed}>
-          <CaretRight size={17} weight="bold" aria-hidden />
-        </button>
-        <div className="sidebar-compact-divider" aria-hidden />
         <button type="button" className="sidebar-compact-button" title="新对话" aria-label="新对话" onClick={p.onNewConversation}>
           <Plus size={18} weight="bold" aria-hidden />
         </button>
@@ -202,9 +204,6 @@ export function Sidebar(p: Props) {
       <div className="sidebar-surface__quick-actions">
         <button className={btn} onClick={p.onNewConversation}>
           <span className="sidebar-primary-action__icon" aria-hidden><Plus size={17} weight="bold" /></span> 新对话
-        </button>
-        <button type="button" className="sidebar-collapse-toggle" title="收起左侧面板" aria-label="收起左侧面板" aria-expanded="true" onClick={p.onToggleCollapsed}>
-          <CaretLeft size={15} weight="bold" aria-hidden />
         </button>
         <button className={`${btn} sidebar-primary-action--secondary`} disabled={p.uploadBusy} onClick={() => fileRef.current?.click()}>
           <span className="sidebar-primary-action__icon" aria-hidden><UploadSimple size={17} weight="duotone" /></span> {p.uploadBusy ? "正在导入…" : "导入材料"}

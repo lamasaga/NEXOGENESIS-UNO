@@ -7,6 +7,7 @@ import { BookCompilationView, bookActiveStatus, bookCanContinue, bookCompilation
 import { CardMarkdown } from "./CardReader";
 import "./UnoKnowledgePanel.css";
 import { COMPILE_HINTS } from '../../../packages/nexogenesis-tools/lib/compile-options.js';
+import { CONTENT_SAFETY_TITLE, CONTENT_SAFETY_MESSAGE, CONTENT_SAFETY_NEXT, isContentSafetyRejection } from '../../../packages/nexogenesis-tools/lib/content-safety.js';
 import { pendingStart, completeStart, rejectStart } from '../conversations/recovery';
 import {queueProgress,type UnoUnassignedQueueState} from '../uno/unassignedQueue';
 
@@ -57,8 +58,23 @@ export function unoWorkProgress(job:UnoJob,bookCompile=false) {
 
 const constructionPhaseLabel=(job:UnoJob)=>({prepare:'准备建构范围',read:'检查与修订',organize:'独立审核',settle:'审核后发布',batch_done:'本组结算',done:'建构结束',ended:'任务已结束'} as Record<string,string>)[job.phase??'read']??'建构处理中';
 
+export function contentSafetyFailure(job:UnoJob){
+  if(!['paused','failed','partial'].includes(job.status))return null;
+  const failure=job.last_failure??job.last_error??{code:job.error_code,message:job.detail};
+  return isContentSafetyRejection(failure)?failure:null;
+}
+
+export function ContentSafetyNotice({job}:{job:UnoJob}){
+  const failure=contentSafetyFailure(job);
+  if(!failure)return null;
+  const raw='provider_message' in failure&&typeof failure.provider_message==='string'?failure.provider_message:failure.message;
+  return <><h3>{CONTENT_SAFETY_TITLE}</h3><p>{CONTENT_SAFETY_MESSAGE}</p><p>{CONTENT_SAFETY_NEXT}</p>
+    <details><summary>查看供应商错误详情</summary><p className="uno-work__muted">{raw}</p></details></>;
+}
+
 export function repairRecoveryGuidance(job:UnoJob){
   if(job.operation!=='isolated-card-repair'||!['paused','failed','partial'].includes(job.status))return null;
+  if(contentSafetyFailure(job))return null;
   const failure=job.last_failure?.message??job.last_error?.message??job.detail??'';
   if(job.last_failure?.code==='UNDELIVERED_EVIDENCE'||/须读回.*完整正文/u.test(failure))return {
     headline:'需要更新依据后继续',
@@ -104,6 +120,7 @@ export function activeJobPresentation(job:UnoJob,queue?:UnoUnassignedQueueState|
   }else if(activeRequest){
     detail='模型请求已发送，系统正在等待返回；已保存成果不会重复处理。';
   }
+  if(contentSafetyFailure(job)&&!ending){headline=CONTENT_SAFETY_TITLE;detail='模型供应商拒绝了本次请求，当前进度已保留。';}
 
   let progressValue=0,progressMax=0,progressLead='',progressTail='',progressLabel='';
   let facts:Array<{label:string;value:string}>=[];
@@ -267,6 +284,7 @@ export function UnoKnowledgePanel({mode,jobId,initialNotes='',available=true,onC
   const relationWeaving=!isCompile&&usesRelationWeaving(controls);
   const scopeLabel=scopeMode==='cards'?`所选 ${selectedCards.length} 张卡片`:domain?(preparation?.domains.find(d=>d.id===domain)?.title??domain):'当前知识库 · 自动选择';
   const count=preparation?.cards.filter(c=>(!domain||c.domains.includes(domain))&&(!type||c.type===type)).length??0;
+  const compilableSourceRefs=(preparation?.sources??[]).filter(source=>source.compile_available!==false).map(source=>source.path.startsWith('00-Inbox/')?source.path:`00-Inbox/${source.path}`);
   const cards=job?.pending?.cards?(job.pending?.cards??[]) as UnoCardDraft[]:[];
   const duplicateIds=Object.entries(job?.pending?.duplicates??{}).filter(([,items])=>items.length).map(([id])=>id);
   const ending=Boolean(job?.end_requested && job.status!=="ended");
@@ -284,6 +302,7 @@ export function UnoKnowledgePanel({mode,jobId,initialNotes='',available=true,onC
   const bounded=bookCompile||job?.orchestration_profile==='bounded-workflow-v1',budgetUnavailable=Boolean(bounded&&(job?.provider_budget?.available===false||typeof job?.provider_budget?.used!=='number'));
   const resumePlan=job?.resume_plan;
   const repairRecovery=job?repairRecoveryGuidance(job):null;
+  const contentSafety=job?contentSafetyFailure(job):null;
   const resumable=Boolean(job&&["paused","failed","partial"].includes(job.status)&&!waiting&&!ending&&(resumePlan?resumePlan.kind==='resume':(!bookCompile||bookCanContinue(job))));
   const resumeDecision=Boolean(job&&["paused","failed","partial"].includes(job.status)&&resumePlan?.kind==='decision'&&!waiting&&!ending);
   const resumeBlocked=Boolean(job&&["paused","failed","partial"].includes(job.status)&&resumePlan?.kind==='blocked'&&!waiting&&!ending);
@@ -312,11 +331,11 @@ export function UnoKnowledgePanel({mode,jobId,initialNotes='',available=true,onC
           </>}
           {!queueOwnsJob&&!resumeDecision&&!["ended","completed"].includes(job.status)&&<button className={bookSettled||repairRecovery?'uno-work__quiet':'uno-work__end'} disabled={busy||!connected||ending} onClick={()=>void perform(()=>updateUnoJob(job,"end"))}>{ending?"正在结束…":bookSettled?"暂时关闭":repairRecovery?.closeLabel??"结束本次任务"}</button>}
     </div>
-        {!bookSettled&&resumeDecision&&<section className="uno-work__review uno-work__resume-decision" role="status" aria-label="继续前处理停点"><h3>继续前需要处理当前停点</h3><p>{resumePlan!.reason}</p>
-          <div className="uno-work__actions">{resumePlan!.actions.map(item=><button type="button" className={item.id==='quarantine-candidates'?'uno-work__primary':undefined} disabled={busy||!connected||budgetUnavailable} key={item.id} title={item.effect} onClick={()=>void perform(()=>resolveUnoJob(job,item.id as 'quarantine-candidates'|'discard-candidates'|'defer-unit'))}>{item.label}</button>)}<button type="button" className="uno-work__end" disabled={busy||!connected||ending} onClick={()=>void perform(()=>updateUnoJob(job,"end"))}>暂不处理，结束任务</button></div>
+        {resumeDecision&&<section className="uno-work__review uno-work__resume-decision" role="status" aria-label="继续前处理停点">{contentSafety?<ContentSafetyNotice job={job}/>:<><h3>继续前需要处理当前停点</h3><p>{resumePlan!.reason}</p></>}
+          <div className="uno-work__actions">{resumePlan!.actions.filter(item=>item.id!=='resume').map(item=><button type="button" className={item.id==='quarantine-candidates'?'uno-work__primary':undefined} disabled={busy||!connected||budgetUnavailable} key={item.id} title={item.effect} onClick={()=>void perform(()=>resolveUnoJob(job,item.id as 'quarantine-candidates'|'discard-candidates'|'defer-unit'|'retry-deferred-unit'))}>{item.label}</button>)}<button type="button" className="uno-work__end" disabled={busy||!connected||ending} onClick={()=>void perform(()=>updateUnoJob(job,"end"))}>暂不处理，结束任务</button></div>
           <details><summary>这些选项有什么区别</summary>{resumePlan!.actions.map(item=><p className="uno-work__muted" key={item.id+'-effect'}><strong>{item.label}：</strong>{item.effect}</p>)}<p className="uno-work__muted"><strong>暂不处理，结束任务：</strong>关闭任务并保留当前停点、已保存成果与审核记录。</p></details>
         </section>}
-        {!bookSettled&&resumeBlocked&&<p role="status" className="uno-work__error">{resumePlan!.reason}</p>}
+        {!bookSettled&&resumeBlocked&&(contentSafety?<section role="status" className="uno-work__review"><ContentSafetyNotice job={job}/></section>:<p role="status" className="uno-work__error">{resumePlan!.reason}</p>)}
         {!bookSettled&&!queueOwnsJob&&!['ended','completed'].includes(job.status)&&<p className="uno-work__muted uno-work__action-note">{resumeDecision?'选择一项明确处理方式后才会继续；不会重复执行无效的普通继续。':resumeBlocked?'当前没有安全的普通继续路径；已有成果和检查点保持不变。':repairRecovery?'关闭只会结束当前处理任务；候选与问题仍留在编译修复队列，可稍后继续。':'暂停后可以继续；结束本次任务会保留已保存成果、草稿及未处理材料，之后可新建任务接着整理。'}</p>}
   </>:null;
   const panelTitle=job?(bookCompile?(bookSettled?bookPanelTitle(job):bookWorkingTitle(job)):job.title):(isCompile?'编译材料':'建构知识');
@@ -335,7 +354,7 @@ export function UnoKnowledgePanel({mode,jobId,initialNotes='',available=true,onC
       {job&&!isCompile&&job.construction_profile&&!['direction-driven-v1','strategy-driven-v2'].includes(job.construction_profile)&&<p className="uno-work__muted">此历史任务不会自动转换为当前建构协议；范围和处理要求保持创建时的设置。</p>}
 
       {error&&<div role="alert" className="uno-work__error">{error}<button onClick={()=>jobId||job?void fetchUnoJob(jobId??job!.id).then(setJob).catch(e=>setError(String(e))):void fetchUnoPreparation().then(setPreparation).catch(e=>setError(String(e)))}>刷新</button></div>}
-      {!connected&&!job&&<p role="status" className="uno-work__error">进度暂未同步，网页会自动重试。这不代表模型调用失败；当前显示上次确认的进度，刷新不会暂停任务。</p>}
+      {!connected&&!job&&<p role="status" className="uno-work__error">服务正在重新连接。你仍可选择材料和填写要求；恢复连接后即可开始任务。</p>}
       {!job&&unconfirmedStart&&<section aria-label="上次开始请求" className="uno-work__selection"><h3>{legacyStart?'历史编译开始请求':'上次开始请求尚未确认'}</h3><p>{legacyStart?'此请求使用旧编译流程。可以查询原任务记录，不会重放请求或自动启动新任务。':'先核对保留的原请求，避免重复启动。核对完成前不会改写原要求或创建另一项任务。'}</p><p className="uno-work__muted">{unconfirmedStart.mode==='compile'?`材料 ${unconfirmedStart.sources?.length??0} 项`:'建构请求'}{unconfirmedStart.theme?` · ${unconfirmedStart.theme}`:''}</p>{unconfirmedStart.notes&&<p>{unconfirmedStart.notes}</p>}
         {legacyStart?<><button disabled={busy||!connected} onClick={()=>{const saved=pendingStart(unconfirmedStart.library_id??'legacy');if(!saved)return;void perform(async()=>{try{const recovered=await fetchUnoJob(saved.id);completeStart(unconfirmedStart.library_id??'legacy',saved.id,recovered.owner_session_id??recovered.session_id);return recovered;}catch(error){setMissingLegacyStart(Number((error as {status?:number}).status)===404);throw error;}});}}>查询原任务记录</button>{missingLegacyStart&&<><p className="uno-work__muted">服务确认未找到对应任务。可清除本地未确认请求，重新选择 Inbox 书籍；这不会删除服务器上的材料或成果。</p><button onClick={()=>{const library=unconfirmedStart.library_id??'legacy',saved=pendingStart(library);if(saved)rejectStart(library,saved.id);setUnconfirmedStart(null);setMissingLegacyStart(false);setSources([]);setContinuous(true);setDelivery('auto');setAutomaticDomains(false);setError('');}}>清除未确认请求并重新选书</button></>}</>:<>{!startReady&&<p role="status" className="uno-work__error">{capability.message||'当前服务尚未加载建构侧重与权限控制，请加载新版服务后使用。'}</p>}<button className="uno-work__primary" disabled={busy||!connected||!startReady} onClick={()=>void perform(()=>startUnoJob(unconfirmedStart))}>{busy?'正在核对…':'核对上次开始请求'}</button></>}
       </section>}
@@ -349,13 +368,13 @@ export function UnoKnowledgePanel({mode,jobId,initialNotes='',available=true,onC
             <fieldset><legend>选择材料 · 已选 {sources.length}</legend><p className="uno-work__muted">图书按章节整理，短文章保留整篇；长单元按段落切分。每个单元完整提交一次生成知识卡，检查后只修改问题卡。</p>
               {!!preparation.archived_sources?.length&&<p className="uno-work__muted">已识别 {preparation.archived_sources.length} 份与完成归档逐字节一致的 Inbox 副本，不再列为待编译材料；不可变原件仍保留在归档目录。</p>}
               {!preparation.sources.length&&<p>Inbox 当前没有待编译材料，请先上传原始文件。历史整理材料保留在原任务中，不作为新编译入口。</p>}
-              <button type="button" onClick={()=>setSources(preparation.sources.filter(s=>s.compile_available!==false).map(s=>s.path.startsWith("00-Inbox/")?s.path:"00-Inbox/"+s.path))}>全选可编译材料</button><button type="button" onClick={()=>setSources([])}>清空选择</button><div className="uno-work__materials">{preparation.sources.map(source=>({source,path:source.path,ref:source.path.startsWith("00-Inbox/")?source.path:"00-Inbox/"+source.path})).map(item=>{
+              <button type="button" disabled={busy||!compilableSourceRefs.length} onClick={()=>setSources(compilableSourceRefs)}>全选可编译材料</button><button type="button" disabled={busy||!sources.length} onClick={()=>setSources([])}>清空选择</button><div className="uno-work__materials">{preparation.sources.map(source=>({source,path:source.path,ref:source.path.startsWith("00-Inbox/")?source.path:"00-Inbox/"+source.path})).map(item=>{
                 const ref=item.ref;
-                return <label key={ref}><input type="checkbox" checked={sources.includes(ref)} disabled={busy||!connected||item.source.compile_available===false}
+                return <label key={ref}><input type="checkbox" checked={sources.includes(ref)} disabled={busy||item.source.compile_available===false}
                   onChange={e=>setSources(current=>e.target.checked?[...current,ref]:current.filter(s=>s!==ref))}/><span>{item.path}{inboxSourceProgress(item.source)&&<small> · {inboxSourceProgress(item.source)}</small>}{item.source.compile_unavailable_reason&&<small> · {item.source.compile_unavailable_reason}</small>}</span></label>;
               })}</div>
             </fieldset>
-            <fieldset><legend>编译倾向 · 快捷提示词</legend><div className="uno-work__actions">{COMPILE_HINTS.map(h=><button type="button" key={h.id} onClick={()=>setNotes(current=>current?current+'\n'+h.prompt:h.prompt)}>{h.label}</button>)}</div></fieldset>
+            <fieldset><legend>编译倾向 · 快捷提示词</legend><div className="uno-work__actions uno-work__compile-hints">{COMPILE_HINTS.map(h=><button type="button" key={h.id} onClick={()=>setNotes(current=>current?current+'\n'+h.prompt:h.prompt)}>{h.label}</button>)}</div></fieldset>
             <label>本轮编译提示词<textarea rows={5} value={notes}  onChange={e=>setNotes(e.target.value)} placeholder="例如：重点保留作者的论证主线、关键历史案例与不同立场。快捷选项会将文字加入这里，可自由修改。"/></label>
             <label className="uno-work__inline"><input type="checkbox" checked={automaticDomains} onChange={e=>setAutomaticDomains(e.target.checked)}/>允许编译自行决定领域</label>
             <p className="uno-work__muted">开启后，领域治理检查点提出的新领域会在通过成员、边界、版本和原子写入校验后自动创建并挂靠；关闭时逐项确认。此授权只属于本次编译。</p>

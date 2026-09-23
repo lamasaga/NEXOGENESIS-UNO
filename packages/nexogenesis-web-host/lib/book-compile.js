@@ -11,6 +11,7 @@ import { sameBookUnitSource } from '../../nexogenesis-tools/lib/uno/book-paths.j
 import { unoRevision, sha } from '../../nexogenesis-tools/lib/harness/uno-storage.js';
 import { readCompileJob, saveCompileJob } from '../../nexogenesis-tools/lib/uno/state.js';
 import { preprocessSource } from '../../nexogenesis-tools/lib/uno/knowledge.js';
+import { CONTENT_SAFETY_CODE, CONTENT_SAFETY_MESSAGE, isContentSafetyRejection } from '../../nexogenesis-tools/lib/content-safety.js';
 import { archiveExternalImages } from '../../nexogenesis-tools/lib/uno/assets.js';
 import { BOOK_WORKFLOW, bookProgress } from '../../nexogenesis-tools/lib/uno/book-agent.js';
 import { bindProviderBudgetSession, getProviderBudget } from '../../nexogenesis-tools/lib/uno/request-budget.js';
@@ -26,6 +27,7 @@ import { buildCompileRecoveryRequest, classifyCompileFailure, COMPILE_RECOVERY_C
 import { bindCurrentUnitSources, governRoutineReviewIssues, ROUTINE_REVIEW_GOVERNANCE } from './compile-review-governance.js';
 import { RESUME_PLAN_CONTRACT, settleResumeGuard } from './resume-plan.js';
 import { COMPILE_ISOLATION, isolationEnabled, isolationOpen, isolatedCardIds, isolateCompileItem, canIsolateFailure, quarantineUnit, settleQuarantinedUnit, compileIsolationSummary } from '../../nexogenesis-tools/lib/uno/compile-isolation.js';
+import { relationEvidenceIssues } from '../../nexogenesis-tools/lib/uno/compile-reference-scope.js';
 import { safeCardId } from '../../nexogenesis-tools/lib/uno-contract.js';
 import { reconcileIsolationRepair, refreshIsolationRepairReferences, ISOLATED_REPAIR_DIAGNOSIS } from '../../nexogenesis-tools/lib/uno/compile-repair.js';
 import { SINGLE_CARD_RECOMPILE_CONTRACT } from './single-card-recompile.js';
@@ -48,6 +50,8 @@ export const COMPILE_HEALTH = {
   uno_compile_entry: 4,
   uno_book_compile: 3,
   uno_unit_compile: 3,
+  uno_preprocess_python: 'verified-interpreter-v1',
+  uno_content_safety_notice: 1,
   compile_review_context: 'typed-card-and-relation-repair-v2',
   uno_relation_repair: 1,
   uno_relation_scope_projection: RELATION_SCOPE_PROJECTION,
@@ -58,6 +62,8 @@ export const COMPILE_HEALTH = {
   uno_generation_note_recovery: 1,
   uno_generation_json_tail_recovery: UNIT_JSON_TRAILING_CLOSERS_RECOVERY,
   uno_compile_isolation: COMPILE_ISOLATION,
+  uno_compile_reference_isolation: 'per-card-evidence-scope-v1',
+  uno_compile_resume_queue: 'preserve-deferred-v1',
   uno_isolated_repair_diagnosis: ISOLATED_REPAIR_DIAGNOSIS,
   uno_reference_delivery: '3-full-5-compact-v1',
   uno_workflow_reasoning: 1,
@@ -186,11 +192,16 @@ export function prepareBookResume(job) {
 }
 
 export function assertBookPauseDecision(job,decision) {
-  const focused=job.book_focus_refs?.find(ref=>job.unit_work?.[ref]&&job.book_outcomes?.[ref]?.status!=='processed');
+  const focused=job.book_focus_refs?.find(ref=>job.unit_work?.[ref]&&!['processed','quarantined'].includes(job.book_outcomes?.[ref]?.status));
   const deferred=(job.book_units??[]).find(unit=>job.book_outcomes?.[unit.ref]?.status==='deferred'&&job.unit_work?.[unit.ref])?.ref;
   const ref=focused??deferred,work=job.unit_work?.[ref],unit=(job.book_units??[]).find(row=>row.ref===ref);
   if(!ref||!work||!unit)throw Object.assign(new Error('当前没有可处理的编译停点。'),{code:'RESUME_DECISION_UNAVAILABLE'});
   const code=job.last_failure?.code??job.error_code,alreadyDeferred=job.book_outcomes?.[ref]?.status==='deferred';
+  if(decision==='retry-deferred-unit'){
+    if(job.workflow!==BOOK_WORKFLOW||!alreadyDeferred||nextBookFocus(job).length)
+      throw Object.assign(new Error('仅在主线处理完毕后，才能显式重试一个延期单元。'),{code:'RESUME_DECISION_INVALID'});
+    return {ref,work,unit,ids:Object.keys(work.pending_issues??{}),alreadyDeferred};
+  }
   if(decision==='discard-candidates'){
     const ids=Object.keys(work.pending_issues??{});
     if(code!=='UNIT_CARD_REPAIR_EXHAUSTED'&&!alreadyDeferred)throw Object.assign(new Error('当前停点不允许放弃候选。'),{code:'RESUME_DECISION_INVALID'});
@@ -214,7 +225,14 @@ export function assertBookPauseDecision(job,decision) {
 export function resolveBookPause(root,job,decision) {
   const {ref,work,unit,ids,alreadyDeferred}=assertBookPauseDecision(job,decision);
   const at=new Date().toISOString();
-  if(decision==='discard-candidates'){
+  if(decision==='retry-deferred-unit'){
+    (job.book_defer_history??=[]).push({ref,...job.book_outcomes[ref]});
+    delete job.book_outcomes[ref];job.book_focus_refs=[ref];job.book_advance_requested=false;
+    work.phase=work.cards?'check':'generate';
+    prepareBookResume(job);
+    work.resolutions=[...(work.resolutions??[]),{contract:BOOK_PAUSE_RESOLUTION,decision,ids,at}];
+    job.detail=`${unit.title}：正在重试选定延期单元；其他延期项保持不变。`;
+  }else if(decision==='discard-candidates'){
     const rejected=new Set(ids);
     work.rejected_candidates=[...(work.rejected_candidates??[]),...ids.map(id=>{
       const card=(work.cards??[]).find(row=>row.id===id);
@@ -345,7 +363,14 @@ export async function generateUnitResponse(ctx, root, job, request, signal) {
       throw error;
     }
     call.status = 'completed'; return text;
-  } catch (error) { call.status = signal.aborted ? 'cancelled' : 'failed'; call.error = error.message; throw error; }
+  } catch (error) {
+    if(!signal.aborted&&isContentSafetyRejection(error)){
+      error.provider_message=error.finish?.failure?.message??error.message;
+      error.code=CONTENT_SAFETY_CODE;error.message=CONTENT_SAFETY_MESSAGE;
+      call.error_code=error.code;call.provider_message=error.provider_message;
+    }
+    call.status = signal.aborted ? 'cancelled' : 'failed'; call.error = error.message; throw error;
+  }
   finally {
     call.finished_at = new Date().toISOString(); call.response = text;
     current = readCompileJob(root, job.id);
@@ -452,13 +477,14 @@ export async function runBookTurn(ctx, root, initial, signal, generate = generat
     return kept;
   };
   const assertReferenceAuthority = cards => {
-    const full=new Map(authorityReferences().filter(card=>card.delivery!=='summary').map(card=>[card.id,card]));
-    const compact=new Set(work.references.filter(card=>card.delivery==='summary'&&!full.has(card.id)).map(card=>card.id));
-    for(const card of cards){
-      const original=full.get(card.id),oldRelations=new Set((original?.relations??[]).map(relation=>JSON.stringify(relation)));
-      if((card.relations??[]).some(relation=>compact.has(relation.target)&&!oldRelations.has(JSON.stringify(relation))))
-        throw Object.assign(new Error('摘要参考只能用于避重与导航，不能成为新关系依据。'),{code:'UNDELIVERED_EVIDENCE'});
+    for(const issue of relationEvidenceIssues(cards,authorityReferences())){
+      if(!eligible({id:issue.card_id})||work.published[issue.card_id])continue;
+      if(!isolationEnabled(job))throw Object.assign(new Error('摘要参考只能用于避重与导航，不能成为新关系依据。'),{code:'UNDELIVERED_EVIDENCE'});
+      delete work.checks[issue.card_id];
+      isolateCompileItem(work,{key:'link-'+issue.card_id,card_id:issue.card_id,kind:'relation',error:issue,
+        candidate:cards.find(card=>card.id===issue.card_id)});
     }
+    persist();
   };
   const invoke = async(phase,data) => {
     const request=buildUnitRequest(job,unit,work.references,phase,data), key=unitRequestKey(request);
@@ -1132,6 +1158,7 @@ export async function executeBookCompile(ctx, root, initial, controller, depende
     const job = readCompileJob(root, id); job.status = job.end_requested ? 'ended' : 'paused';
     job.error_code = budgetStopCode(error) ?? error.code ?? 'UNIT_COMPILE_STOPPED';
     job.last_failure={code:job.error_code,message:(signal.aborted ? signal.reason?.message : error.message)||'执行中断，进度已保留。',
+      ...(error.provider_message?{provider_message:error.provider_message}:{}),
       ...classifyCompileFailure({...error,code:job.error_code},signal.aborted),at:new Date().toISOString()};
     job.detail = (signal.aborted ? signal.reason?.message : error.message) || '执行中断，进度已保留。'; saveCompileJob(root, job);
   } finally {
